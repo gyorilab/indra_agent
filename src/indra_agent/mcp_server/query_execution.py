@@ -26,7 +26,7 @@ from neo4j import exceptions as neo4j_exceptions
 from indra_cogex.client.neo4j_client import Neo4jClient
 from indra_cogex.representation import norm_id
 from indra_agent.mcp_server.validation import validate_cypher
-from indra_cogex.client.pagination import paginate_response
+from indra_agent.mcp_server.pagination import paginate_response
 
 logger = logging.getLogger(__name__)
 

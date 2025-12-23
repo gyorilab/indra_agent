@@ -7,7 +7,7 @@ from enum import Enum
 from typing import Any, List, Optional
 import logging
 
-from indra_cogex.client.pagination import paginate_response, estimate_tokens
+from indra_agent.mcp_server.pagination import paginate_response, estimate_tokens
 
 logger = logging.getLogger(__name__)
 

@@ -24,7 +24,7 @@ from indra_agent.mcp_server.mappings import (
 )
 from indra_agent.mcp_server.registry import _get_registry, clear_registry_cache
 from indra_agent.mcp_server.serialization import process_result, resolve_entity_names
-from indra_cogex.client.pagination import paginate_response, estimate_tokens
+from indra_agent.mcp_server.pagination import paginate_response, estimate_tokens
 
 logger = logging.getLogger(__name__)
 
@@ -561,7 +561,12 @@ async def ground_entity(
 
         # Reuse existing grounding function (handles gilda lib + HTTP fallback)
         # Enable CURIE normalization for MCP to ensure consistent lowercase namespaces
-        raw_results = gilda_ground(term, organism=organism, limit=limit, normalize_curies=True)
+        raw_results = gilda_ground(
+            term,
+            organisms=[organism] if organism else None,
+            limit=limit,
+            normalize_curies=True
+        )
 
         # Handle error dict from gilda_ground
         if isinstance(raw_results, dict) and "error" in raw_results:
