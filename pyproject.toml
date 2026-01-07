@@ -1,0 +1,66 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "indra_agent"
+version = "0.1.0"
+description = "MCP server and agent tools for INDRA CoGEx knowledge graph"
+readme = "README.md"
+license = {text = "BSD-2-Clause"}
+requires-python = ">=3.10"
+authors = [
+    {name = "INDRA Labs", email = "indra.sysbio@gmail.com"}
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: BSD License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Bio-Informatics",
+]
+keywords = ["mcp", "agent", "knowledge-graph", "indra", "biomedical"]
+
+dependencies = [
+    "indra_cogex @ git+https://github.com/gyorilab/indra_cogex.git",
+    "mcp>=1.2.0",
+    "gilda",
+    "pydantic>=2.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "pytest-asyncio",
+    "python-dotenv",
+]
+
+[project.urls]
+Homepage = "https://github.com/gyorilab/indra_agent"
+Repository = "https://github.com/gyorilab/indra_agent"
+Documentation = "https://github.com/gyorilab/indra_agent#readme"
+
+[project.scripts]
+indra-agent = "indra_agent.mcp_server:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+"*" = ["*.json", "*.yaml", "*.yml"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "W"]
+ignore = ["E501"]
