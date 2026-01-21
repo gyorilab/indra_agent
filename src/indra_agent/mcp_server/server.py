@@ -12,6 +12,7 @@ Architecture:
     - get_navigation_schema: Full edge map for discovery
 """
 import asyncio
+import contextlib
 import json
 import logging
 import os
@@ -21,6 +22,9 @@ from typing import Any, Dict, List, Optional
 import click
 from mcp.server.fastmcp import FastMCP
 from pydantic import BaseModel, Field, ConfigDict
+from starlette.applications import Starlette
+from starlette.responses import HTMLResponse
+from starlette.routing import Mount, Route
 
 from indra_cogex.client.neo4j_client import Neo4jClient
 from indra.config import get_config
@@ -50,6 +54,153 @@ def get_client() -> Neo4jClient:
             )
             logger.info(f"Initialized Neo4j client: {get_config('INDRA_NEO4J_URL')}")
         return _neo4j_client
+
+
+# ============================================================================
+# Landing Page HTML
+# ============================================================================
+
+def get_landing_page_html(server_name: str = "indra_cogex") -> str:
+    """Generate HTML landing page for the MCP server."""
+    return f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{server_name} - MCP Server</title>
+    <style>
+        * {{
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }}
+        body {{
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }}
+        .container {{
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            max-width: 800px;
+            width: 100%;
+            padding: 40px;
+        }}
+        h1 {{
+            color: #667eea;
+            margin-bottom: 10px;
+            font-size: 2.5em;
+        }}
+        .subtitle {{
+            color: #666;
+            margin-bottom: 30px;
+            font-size: 1.2em;
+        }}
+        .info-section {{
+            margin: 30px 0;
+            padding: 20px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            border-left: 4px solid #667eea;
+        }}
+        .info-section h2 {{
+            color: #667eea;
+            margin-bottom: 15px;
+            font-size: 1.5em;
+        }}
+        .info-section p {{
+            margin-bottom: 10px;
+        }}
+        .endpoint {{
+            background: #e9ecef;
+            padding: 10px 15px;
+            border-radius: 5px;
+            font-family: 'Courier New', monospace;
+            margin: 10px 0;
+            word-break: break-all;
+        }}
+        .status {{
+            display: inline-block;
+            padding: 5px 15px;
+            background: #28a745;
+            color: white;
+            border-radius: 20px;
+            font-size: 0.9em;
+            margin-top: 10px;
+        }}
+        ul {{
+            margin-left: 20px;
+            margin-top: 10px;
+        }}
+        li {{
+            margin-bottom: 8px;
+        }}
+        .footer {{
+            margin-top: 40px;
+            padding-top: 20px;
+            border-top: 1px solid #dee2e6;
+            text-align: center;
+            color: #6c757d;
+            font-size: 0.9em;
+        }}
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>{server_name}</h1>
+        <p class="subtitle">Model Context Protocol (MCP) Server</p>
+        
+        <div class="status">✓ Server is running</div>
+        
+        <div class="info-section">
+            <h2>About</h2>
+            <p>This is an MCP server providing access to the INDRA CoGEx knowledge graph. 
+            The server exposes tools, resources, and prompts for querying and navigating 
+            biomedical knowledge graphs.</p>
+        </div>
+        
+        <div class="info-section">
+            <h2>Endpoint</h2>
+            <p>MCP clients should connect to this endpoint:</p>
+            <div class="endpoint">POST /mcp</div>
+            <p>This endpoint accepts MCP protocol messages via POST requests.</p>
+        </div>
+        
+        <div class="info-section">
+            <h2>Features</h2>
+            <ul>
+                <li><strong>Schema Discovery:</strong> Explore graph structure and entity types</li>
+                <li><strong>Query Execution:</strong> Execute Cypher queries on the knowledge graph</li>
+                <li><strong>Query Validation:</strong> Validate queries before execution</li>
+                <li><strong>Result Enrichment:</strong> Add metadata to query results</li>
+                <li><strong>Graph Navigation:</strong> Navigate the knowledge graph using gateway tools</li>
+            </ul>
+        </div>
+        
+        <div class="info-section">
+            <h2>Transport</h2>
+            <p>This server uses the <strong>Streamable HTTP</strong> transport mode, 
+            which supports both stateless and stateful operation.</p>
+        </div>
+        
+        <div class="footer">
+            <p>INDRA CoGEx MCP Server | Model Context Protocol</p>
+        </div>
+    </div>
+</body>
+</html>"""
+
+
+async def landing_page_handler(request):
+    """Handle GET requests to /mcp with HTML landing page."""
+    return HTMLResponse(content=get_landing_page_html(mcp.name))
 
 
 # ============================================================================
@@ -374,13 +525,63 @@ def main(http: bool, host: Optional[str], port: Optional[int], stateless: bool, 
         logger.info(f"Stateless mode: {stateless}, JSON response: {json_response}")
 
         # Update FastMCP settings before running
-        # These settings must be set at initialization, so we update the settings object
         mcp.settings.host = http_host
         mcp.settings.port = http_port
         mcp.settings.stateless_http = stateless
         mcp.settings.json_response = json_response
 
-        mcp.run(transport="streamable-http")
+        # Create Starlette app with landing page and MCP server
+        @contextlib.asynccontextmanager
+        async def lifespan(app: Starlette):
+            """Manage MCP session manager lifecycle."""
+            async with mcp.session_manager.run():
+                yield
+
+        # Get the MCP server's ASGI app (handles routes at /mcp by default)
+        # Note: stateless_http and json_response are already set via mcp.settings above
+        mcp_app = mcp.streamable_http_app()
+
+        # Create Starlette app for lifespan management
+        starlette_app = Starlette(routes=[], lifespan=lifespan)
+        
+        # Create ASGI wrapper that intercepts GET /mcp and forwards rest to MCP app
+        class CombinedASGIApp:
+            """ASGI app that serves landing page for GET /mcp, forwards rest to MCP app."""
+            
+            def __init__(self, mcp_app, landing_handler, starlette_app):
+                self.mcp_app = mcp_app
+                self.landing_handler = landing_handler
+                self.starlette_app = starlette_app
+            
+            async def __call__(self, scope, receive, send):
+                if scope["type"] == "lifespan":
+                    # Use Starlette's lifespan handling
+                    await self.starlette_app(scope, receive, send)
+                elif scope["type"] == "http":
+                    path = scope.get("path", "")
+                    method = scope.get("method", "")
+                    
+                    # Intercept GET /mcp for landing page
+                    if path == "/mcp" and method == "GET":
+                        from starlette.requests import Request
+                        request = Request(scope, receive)
+                        response = await self.landing_handler(request)
+                        await response(scope, receive, send)
+                    else:
+                        # Forward all other requests to MCP app
+                        await self.mcp_app(scope, receive, send)
+                else:
+                    await self.mcp_app(scope, receive, send)
+        
+        app = CombinedASGIApp(mcp_app, landing_page_handler, starlette_app)
+
+        # Run with uvicorn
+        try:
+            import uvicorn
+            uvicorn.run(app, host=http_host, port=http_port, log_level="info")
+        except ImportError:
+            logger.error("uvicorn is required for HTTP mode. Install it with: pip install uvicorn")
+            raise
     else:
         # Default stdio transport mode for local clients
         logger.info("Starting MCP server in stdio transport mode")
