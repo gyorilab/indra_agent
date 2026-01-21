@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ server_name }} - MCP Server</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        .container {
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            max-width: 800px;
+            width: 100%;
+            padding: 40px;
+        }
+        h1 {
+            color: #667eea;
+            margin-bottom: 10px;
+            font-size: 2.5em;
+        }
+        .subtitle {
+            color: #666;
+            margin-bottom: 30px;
+            font-size: 1.2em;
+        }
+        .info-section {
+            margin: 30px 0;
+            padding: 20px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            border-left: 4px solid #667eea;
+        }
+        .info-section h2 {
+            color: #667eea;
+            margin-bottom: 15px;
+            font-size: 1.5em;
+        }
+        .info-section p {
+            margin-bottom: 10px;
+        }
+        .endpoint {
+            background: #e9ecef;
+            padding: 10px 15px;
+            border-radius: 5px;
+            font-family: 'Courier New', monospace;
+            margin: 10px 0;
+            word-break: break-all;
+        }
+        .status {
+            display: inline-block;
+            padding: 5px 15px;
+            background: #28a745;
+            color: white;
+            border-radius: 20px;
+            font-size: 0.9em;
+            margin-top: 10px;
+        }
+        ul {
+            margin-left: 20px;
+            margin-top: 10px;
+        }
+        li {
+            margin-bottom: 8px;
+        }
+        .footer {
+            margin-top: 40px;
+            padding-top: 20px;
+            border-top: 1px solid #dee2e6;
+            text-align: center;
+            color: #6c757d;
+            font-size: 0.9em;
+        }
+        .code-block {
+            background: #2d2d2d;
+            color: #f8f8f2;
+            padding: 15px;
+            border-radius: 5px;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9em;
+            margin: 15px 0;
+            overflow-x: auto;
+            line-height: 1.5;
+        }
+        .code-block .comment {
+            color: #75715e;
+        }
+        .code-block .string {
+            color: #e6db74;
+        }
+        .code-block .key {
+            color: #66d9ef;
+        }
+        .client-name {
+            font-weight: 600;
+            color: #667eea;
+            margin-top: 20px;
+            margin-bottom: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>{{ server_name }}</h1>
+        <p class="subtitle">Model Context Protocol (MCP) Server</p>
+        
+        <div class="status">✓ Server is running</div>
+        
+        <div class="info-section">
+            <h2>About</h2>
+            <p>This is an MCP server providing access to the INDRA CoGEx knowledge graph. 
+            The server exposes tools, resources, and prompts for querying and navigating 
+            biomedical knowledge graphs.</p>
+        </div>
+        
+        <div class="info-section">
+            <h2>Endpoint</h2>
+            <p>MCP clients should connect to this endpoint:</p>
+            <div class="endpoint">POST /mcp</div>
+            <p>This endpoint accepts MCP protocol messages via POST requests.</p>
+        </div>
+        
+        <div class="info-section">
+            <h2>Features</h2>
+            <ul>
+                <li><strong>Schema Discovery:</strong> Explore graph structure and entity types</li>
+                <li><strong>Query Execution:</strong> Execute Cypher queries on the knowledge graph</li>
+                <li><strong>Query Validation:</strong> Validate queries before execution</li>
+                <li><strong>Result Enrichment:</strong> Add metadata to query results</li>
+                <li><strong>Graph Navigation:</strong> Navigate the knowledge graph using gateway tools</li>
+            </ul>
+        </div>
+        
+        <div class="info-section">
+            <h2>Transport</h2>
+            <p>This server uses the <strong>Streamable HTTP</strong> transport mode, 
+            which supports both stateless and stateful operation.</p>
+        </div>
+        
+        <div class="info-section">
+            <h2>How to Connect</h2>
+            <p>Configure your MCP client to connect to this server. Examples for popular clients:</p>
+            
+            <div class="client-name">Cursor</div>
+            <p>Add this configuration to your <code>.cursor/mcp.json</code> or <code>~/.cursor/mcp.json</code>:</p>
+            <div class="code-block">{
+  "mcpServers": {
+    "indra-cogex": {
+      "command": "python",
+      "args": ["-m", "indra_agent.mcp_server", "--http", "--port", "8778", "--json-response", "--stateless"],
+      "env": {
+        "INDRA_NEO4J_URL": "${env:INDRA_NEO4J_URL}",
+        "INDRA_NEO4J_USER": "${env:INDRA_NEO4J_USER}",
+        "INDRA_NEO4J_PASSWORD": "${env:INDRA_NEO4J_PASSWORD}"
+      }
+    }
+  }
+}</div>
+            <p><strong>Note:</strong> For HTTP mode, use a remote server configuration instead:</p>
+            <div class="code-block">{
+  "mcpServers": {
+    "indra-cogex": {
+      "url": "http://localhost:8778/mcp"
+    }
+  }
+}</div>
+            
+            <div class="client-name">Claude Code</div>
+            <p>Add this configuration to your plugin's <code>.mcp.json</code> or inline in <code>plugin.json</code>:</p>
+            <div class="code-block">{
+  "mcpServers": {
+    "indra-cogex": {
+      "command": "python",
+      "args": ["-m", "indra_agent.mcp_server", "--http", "--port", "8778", "--json-response", "--stateless"],
+      "env": {
+        "INDRA_NEO4J_URL": "${env:INDRA_NEO4J_URL}",
+        "INDRA_NEO4J_USER": "${env:INDRA_NEO4J_USER}",
+        "INDRA_NEO4J_PASSWORD": "${env:INDRA_NEO4J_PASSWORD}"
+      }
+    }
+  }
+}</div>
+            <p><strong>Note:</strong> For HTTP mode, use a remote server configuration:</p>
+            <div class="code-block">{
+  "mcpServers": {
+    "indra-cogex": {
+      "url": "http://localhost:8778/mcp"
+    }
+  }
+}</div>
+        </div>
+        
+        <div class="footer">
+            <p>INDRA CoGEx MCP Server | Model Context Protocol</p>
+        </div>
+    </div>
+</body>
+</html>
