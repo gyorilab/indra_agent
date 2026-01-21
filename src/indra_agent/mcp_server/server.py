@@ -21,6 +21,7 @@ from typing import Any, Dict, List, Optional
 
 import click
 from mcp.server.fastmcp import FastMCP
+from mcp.server.transport_security import TransportSecuritySettings
 from pydantic import BaseModel, Field, ConfigDict
 from starlette.applications import Starlette
 from starlette.routing import Mount, Route
@@ -35,8 +36,24 @@ from indra_agent.mcp_server.validation import validate_cypher
 
 logger = logging.getLogger(__name__)
 
+# Read allowed hosts and origins from environment variables
+# Defaults to discovery.indra.bio if not set
+_allowed_hosts_env = get_config("MCP_ALLOWED_HOSTS", failure_ok=False)
+_allowed_origins_env = get_config("MCP_ALLOWED_ORIGINS", failure_ok=False)
+
+# Parse comma-separated values into lists
+_allowed_hosts = [h.strip() for h in _allowed_hosts_env.split(",") if h.strip()]
+_allowed_origins = [o.strip() for o in _allowed_origins_env.split(",") if o.strip()]
+
 # Initialize MCP server
-mcp = FastMCP("indra_cogex")
+mcp = FastMCP(
+    "indra_cogex",
+    transport_security=TransportSecuritySettings(
+        enable_dns_rebinding_protection=True,
+        allowed_hosts=_allowed_hosts,
+        allowed_origins=_allowed_origins,
+    )
+)
 
 # Initialize Jinja2 templates
 templates = Jinja2Templates(
