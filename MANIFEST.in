@@ -1,0 +1,1 @@
+include src/indra_agent/mcp_server/templates/*.html

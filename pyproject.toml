@@ -26,10 +26,13 @@ classifiers = [
 keywords = ["mcp", "agent", "knowledge-graph", "indra", "biomedical"]
 
 dependencies = [
-    "indra_cogex @ git+https://github.com/gyorilab/indra_cogex.git",
+    "indra_cogex[web,gsea] @ git+https://github.com/gyorilab/indra_cogex.git",
     "mcp>=1.2.0",
     "gilda",
     "pydantic>=2.0",
+    "uvicorn>=0.20.0",
+    "jinja2>=3.0.0",
+    "gunicorn>=21.0.0",
 ]
 
 [project.optional-dependencies]
@@ -43,9 +46,6 @@ dev = [
 Homepage = "https://github.com/gyorilab/indra_agent"
 Repository = "https://github.com/gyorilab/indra_agent"
 Documentation = "https://github.com/gyorilab/indra_agent#readme"
-
-[project.scripts]
-indra-agent = "indra_agent.mcp_server:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
