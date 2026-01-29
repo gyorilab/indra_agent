@@ -4,176 +4,684 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{{ server_name }} - MCP Server</title>
+    <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
     <style>
         * {
             margin: 0;
             padding: 0;
             box-sizing: border-box;
         }
+        
+        :root {
+            --primary: #667eea;
+            --primary-dark: #5568d3;
+            --secondary: #764ba2;
+            --success: #28a745;
+            --bg-light: #f8f9fa;
+            --bg-code: #2d2d2d;
+            --text: #333;
+            --text-light: #666;
+            --border: #dee2e6;
+        }
+        
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
             line-height: 1.6;
-            color: #333;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: var(--text);
+            background: linear-gradient(135deg, var(--primary) 0%, var(--secondary) 100%);
             min-height: 100vh;
-            display: flex;
-            align-items: center;
-            justify-content: center;
             padding: 20px;
         }
+        
         .container {
             background: white;
             border-radius: 12px;
             box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
-            max-width: 800px;
+            max-width: 1000px;
             width: 100%;
-            padding: 40px;
+            margin: 0 auto;
+            overflow: hidden;
         }
-        h1 {
-            color: #667eea;
-            margin-bottom: 10px;
-            font-size: 2.5em;
+        
+        /* Hero Section */
+        .hero {
+            background: linear-gradient(135deg, var(--primary) 0%, var(--secondary) 100%);
+            color: white;
+            padding: 60px 40px;
+            text-align: center;
         }
-        .subtitle {
-            color: #666;
-            margin-bottom: 30px;
-            font-size: 1.2em;
-        }
-        .info-section {
-            margin: 30px 0;
-            padding: 20px;
-            background: #f8f9fa;
-            border-radius: 8px;
-            border-left: 4px solid #667eea;
-        }
-        .info-section h2 {
-            color: #667eea;
+        
+        .hero h1 {
+            font-size: 3em;
             margin-bottom: 15px;
-            font-size: 1.5em;
+            font-weight: 700;
         }
-        .info-section p {
-            margin-bottom: 10px;
+        
+        .hero .tagline {
+            font-size: 1.4em;
+            margin-bottom: 25px;
+            opacity: 0.95;
         }
-        .endpoint {
-            background: #e9ecef;
-            padding: 10px 15px;
-            border-radius: 5px;
-            font-family: 'Courier New', monospace;
-            margin: 10px 0;
-            word-break: break-all;
-        }
+        
         .status {
             display: inline-block;
-            padding: 5px 15px;
-            background: #28a745;
+            padding: 8px 20px;
+            background: var(--success);
             color: white;
-            border-radius: 20px;
-            font-size: 0.9em;
-            margin-top: 10px;
+            border-radius: 25px;
+            font-size: 1em;
+            font-weight: 500;
         }
-        ul {
-            margin-left: 20px;
-            margin-top: 10px;
-        }
-        li {
-            margin-bottom: 8px;
-        }
-        .footer {
+        
+        /* Quick Concept Visualization */
+        .quick-concept {
             margin-top: 40px;
-            padding-top: 20px;
-            border-top: 1px solid #dee2e6;
-            text-align: center;
-            color: #6c757d;
-            font-size: 0.9em;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 15px;
+            flex-wrap: wrap;
+            font-size: 0.95em;
         }
+        
+        .quick-concept .box {
+            background: rgba(255, 255, 255, 0.15);
+            backdrop-filter: blur(10px);
+            padding: 12px 20px;
+            border-radius: 8px;
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            font-weight: 500;
+        }
+        
+        .quick-concept .arrow {
+            font-size: 1.5em;
+            opacity: 0.8;
+        }
+        
+        /* Content Sections */
+        .content {
+            padding: 40px;
+        }
+        
+        .section {
+            margin-bottom: 40px;
+        }
+        
+        .section h2 {
+            color: var(--primary);
+            margin-bottom: 20px;
+            font-size: 2em;
+            border-bottom: 3px solid var(--primary);
+            padding-bottom: 10px;
+        }
+        
+        .section h3 {
+            color: var(--primary-dark);
+            margin: 25px 0 15px 0;
+            font-size: 1.4em;
+        }
+        
+        .section p {
+            margin-bottom: 15px;
+            line-height: 1.8;
+        }
+        
+        .info-box {
+            background: var(--bg-light);
+            border-left: 4px solid var(--primary);
+            padding: 20px;
+            border-radius: 8px;
+            margin: 20px 0;
+        }
+        
+        .info-box.highlight {
+            background: #e3f2fd;
+            border-left-color: #2196f3;
+        }
+        
+        .info-box.success {
+            background: #e8f5e9;
+            border-left-color: var(--success);
+        }
+        
+        /* Lists */
+        ul, ol {
+            margin-left: 25px;
+            margin-bottom: 15px;
+        }
+        
+        li {
+            margin-bottom: 10px;
+            line-height: 1.7;
+        }
+        
+        li strong {
+            color: var(--primary);
+        }
+        
+        /* Code Blocks */
         .code-block {
-            background: #2d2d2d;
+            background: var(--bg-code);
             color: #f8f8f2;
-            padding: 15px;
-            border-radius: 5px;
-            font-family: 'Courier New', monospace;
+            padding: 20px;
+            border-radius: 8px;
+            font-family: 'Monaco', 'Menlo', 'Courier New', monospace;
             font-size: 0.9em;
-            margin: 15px 0;
+            margin: 20px 0;
             overflow-x: auto;
-            line-height: 1.5;
+            line-height: 1.6;
+            position: relative;
         }
+        
         .code-block .comment {
             color: #75715e;
         }
-        .code-block .string {
-            color: #e6db74;
+        
+        .code-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
         }
-        .code-block .key {
-            color: #66d9ef;
+        
+        .code-title {
+            color: #888;
+            font-size: 0.85em;
+            text-transform: uppercase;
+            letter-spacing: 1px;
         }
-        .client-name {
+        
+        .copy-btn {
+            background: rgba(102, 126, 234, 0.2);
+            border: 1px solid var(--primary);
+            color: var(--primary);
+            padding: 5px 12px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 0.85em;
+            transition: all 0.2s;
+        }
+        
+        .copy-btn:hover {
+            background: var(--primary);
+            color: white;
+        }
+        
+        .inline-code {
+            background: #f1f3f4;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-family: 'Monaco', 'Menlo', 'Courier New', monospace;
+            font-size: 0.9em;
+            color: #c7254e;
+        }
+        
+        /* Diagram Container */
+        .diagram-container {
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            margin: 25px 0;
+            border: 1px solid var(--border);
+            text-align: center;
+        }
+        
+        /* Tabs */
+        .tabs {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+            border-bottom: 2px solid var(--border);
+        }
+        
+        .tab {
+            padding: 12px 24px;
+            background: transparent;
+            border: none;
+            cursor: pointer;
+            font-size: 1em;
+            color: var(--text-light);
+            border-bottom: 3px solid transparent;
+            transition: all 0.2s;
+        }
+        
+        .tab:hover {
+            color: var(--primary);
+        }
+        
+        .tab.active {
+            color: var(--primary);
+            border-bottom-color: var(--primary);
             font-weight: 600;
-            color: #667eea;
-            margin-top: 20px;
-            margin-bottom: 10px;
+        }
+        
+        .tab-content {
+            display: none;
+        }
+        
+        .tab-content.active {
+            display: block;
+        }
+        
+        /* Collapsible Sections */
+        .collapsible {
+            background: var(--bg-light);
+            padding: 15px 20px;
+            border-radius: 8px;
+            cursor: pointer;
+            margin: 15px 0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            transition: all 0.2s;
+        }
+        
+        .collapsible:hover {
+            background: #e9ecef;
+        }
+        
+        .collapsible-title {
+            font-weight: 600;
+            color: var(--primary);
+            font-size: 1.1em;
+        }
+        
+        .collapsible-icon {
+            transition: transform 0.2s;
+        }
+        
+        .collapsible.open .collapsible-icon {
+            transform: rotate(180deg);
+        }
+        
+        .collapsible-content {
+            max-height: 0;
+            overflow: hidden;
+            transition: max-height 0.3s ease;
+        }
+        
+        .collapsible-content.open {
+            max-height: 2000px;
+        }
+        
+        .collapsible-content-inner {
+            padding: 20px 0;
+        }
+        
+        /* Footer */
+        .footer {
+            background: var(--bg-light);
+            padding: 30px 40px;
+            text-align: center;
+            color: var(--text-light);
+            border-top: 1px solid var(--border);
+        }
+        
+        .footer a {
+            color: var(--primary);
+            text-decoration: none;
+        }
+        
+        .footer a:hover {
+            text-decoration: underline;
+        }
+        
+        /* Responsive */
+        @media (max-width: 768px) {
+            .hero h1 {
+                font-size: 2em;
+            }
+            
+            .hero .tagline {
+                font-size: 1.1em;
+            }
+            
+            .quick-concept {
+                font-size: 0.85em;
+            }
+            
+            .content {
+                padding: 25px;
+            }
+            
+            .section h2 {
+                font-size: 1.6em;
+            }
+            
+            .tabs {
+                flex-direction: column;
+            }
+            
+            .tab {
+                border-bottom: 1px solid var(--border);
+                border-left: 3px solid transparent;
+            }
+            
+            .tab.active {
+                border-left-color: var(--primary);
+                border-bottom-color: var(--border);
+            }
         }
     </style>
 </head>
 <body>
 <div class="container">
-    <h1>{{ server_name }}</h1>
-    <p class="subtitle">Model Context Protocol (MCP) Server</p>
-
-    <div class="status">✓ Server is running</div>
-
-    <div class="info-section">
-        <h2>About</h2>
-        <p>This is an MCP server providing access to the INDRA CoGEx knowledge graph.
-            The server exposes tools, resources, and prompts for querying and navigating
-            biomedical knowledge graphs.</p>
-    </div>
-
-    <div class="info-section">
-        <h2>Endpoint</h2>
-        <p>MCP clients should connect to this endpoint:</p>
-        <div class="endpoint">POST /mcp</div>
-        <p>This endpoint accepts MCP protocol messages via POST requests.</p>
-    </div>
-
-    <div class="info-section">
-        <h2>Features</h2>
-        <ul>
-            <li><strong>Schema Discovery:</strong> Explore graph structure and entity
-                types
-            </li>
-            <li><strong>Query Execution:</strong> Execute Cypher queries on the knowledge
-                graph
-            </li>
-            <li><strong>Query Validation:</strong> Validate queries before execution</li>
-            <li><strong>Result Enrichment:</strong> Add metadata to query results</li>
-            <li><strong>Graph Navigation:</strong> Navigate the knowledge graph using
-                gateway tools
-            </li>
-        </ul>
-    </div>
-
-    <div class="info-section">
-        <h2>Transport</h2>
-        <p>This server uses the <strong>Streamable HTTP</strong> transport mode,
-            which supports both stateless and stateful operation.</p>
-    </div>
-
-    <div class="info-section">
-        <h2>How to Connect</h2>
-        <p>Configure your MCP client to connect to this server:</p>
-        <div class="code-block">{
-            "mcpServers": {
-                "indra-cogex": {
-                    "url": "https://discovery.indra.bio/mcp"
-                }
-            }
-        }
+    <!-- Hero Section -->
+    <div class="hero">
+        <h1>{{ server_name }}</h1>
+        <p class="tagline">INDRA CoGEx Knowledge Graph via Model Context Protocol</p>
+        <div class="status">✓ Server is running</div>
+        
+        <div class="quick-concept">
+            <div class="box">AI Assistant</div>
+            <div class="arrow">→</div>
+            <div class="box">MCP Protocol</div>
+            <div class="arrow">→</div>
+            <div class="box">This Server</div>
+            <div class="arrow">→</div>
+            <div class="box">Biomedical Knowledge</div>
         </div>
     </div>
-
+    
+    <!-- Main Content -->
+    <div class="content">
+        
+        <!-- What is MCP Section -->
+        <section class="section">
+            <h2>What is Model Context Protocol (MCP)?</h2>
+            
+            <p><strong>Model Context Protocol (MCP)</strong> is an open standard that enables AI assistants to securely connect to external data sources and tools. Think of it as a universal adapter that lets AI models like Claude access your local files, databases, APIs, and specialized services in a safe, standardized way.</p>
+            
+            <div class="info-box highlight">
+                <h3>Why MCP Matters</h3>
+                <ul>
+                    <li><strong>Universal Standard:</strong> One protocol for connecting any AI client to any data source</li>
+                    <li><strong>Security First:</strong> Built-in protections against unauthorized access and DNS rebinding attacks</li>
+                    <li><strong>Extensible:</strong> Easily add new capabilities without modifying the AI assistant</li>
+                    <li><strong>Separation of Concerns:</strong> Data providers focus on their domain; AI clients focus on reasoning</li>
+                </ul>
+            </div>
+            
+            <h3>How MCP Works</h3>
+            
+            <div class="diagram-container">
+                <div class="mermaid">
+graph LR
+    A[AI Client<br/>Claude, Cursor, etc.] -->|MCP Protocol| B[MCP Server<br/>indra-cogex]
+    B --> C[Tools<br/>Execute queries]
+    B --> D[Resources<br/>Graph schema]
+    B --> E[Prompts<br/>Query templates]
+    C --> F[Neo4j Database<br/>Knowledge Graph]
+    D --> F
+    E --> F
+    
+    style A fill:#667eea,stroke:#5568d3,color:#fff
+    style B fill:#764ba2,stroke:#6a3f8f,color:#fff
+    style F fill:#48bb78,stroke:#38a169,color:#fff
+    style C fill:#e3f2fd,stroke:#2196f3
+    style D fill:#e3f2fd,stroke:#2196f3
+    style E fill:#e3f2fd,stroke:#2196f3
+                </div>
+            </div>
+            
+            <p>MCP defines three core primitives:</p>
+            <ul>
+                <li><strong>Tools:</strong> Functions the AI can invoke (e.g., execute a Cypher query, validate syntax)</li>
+                <li><strong>Resources:</strong> Data the AI can read (e.g., schema information, documentation)</li>
+                <li><strong>Prompts:</strong> Templates to guide the AI's interactions (e.g., query patterns)</li>
+            </ul>
+        </section>
+        
+        <!-- About This Server -->
+        <section class="section">
+            <h2>About This MCP Server</h2>
+            
+            <p>This server provides programmatic access to the <strong>INDRA CoGEx</strong> knowledge graph—a comprehensive biomedical knowledge base integrating multiple sources of biological and chemical information.</p>
+            
+            <div class="info-box success">
+                <h3>What You Can Do</h3>
+                <ul>
+                    <li><strong>Explore Biology:</strong> Query relationships between genes, proteins, diseases, drugs, and more</li>
+                    <li><strong>Discover Connections:</strong> Navigate complex pathways and interaction networks</li>
+                    <li><strong>Validate Knowledge:</strong> Cross-reference information from multiple authoritative sources</li>
+                    <li><strong>Research Assistance:</strong> Let AI help you formulate and execute sophisticated queries</li>
+                </ul>
+            </div>
+            
+            <h3>Server Capabilities</h3>
+            <ul>
+                <li><strong>Schema Discovery:</strong> Explore graph structure and entity types available in CoGEx</li>
+                <li><strong>Query Execution:</strong> Execute Cypher queries on the Neo4j knowledge graph</li>
+                <li><strong>Query Validation:</strong> Validate query syntax before execution to catch errors early</li>
+                <li><strong>Result Enrichment:</strong> Automatically add metadata and context to query results</li>
+                <li><strong>Graph Navigation:</strong> Use specialized tools to traverse the knowledge graph efficiently</li>
+            </ul>
+        </section>
+        
+        <!-- How to Connect -->
+        <section class="section">
+            <h2>How to Connect</h2>
+            
+            <p>Configure your MCP-compatible AI client to connect to this server. The configuration varies slightly by client:</p>
+            
+            <div class="tabs">
+                <button class="tab active" onclick="switchTab(event, 'claude')">Claude Desktop</button>
+                <button class="tab" onclick="switchTab(event, 'cursor')">Cursor</button>
+                <button class="tab" onclick="switchTab(event, 'custom')">Custom Client</button>
+            </div>
+            
+            <div id="claude" class="tab-content active">
+                <div class="code-block">
+                    <div class="code-header">
+                        <span class="code-title">claude_desktop_config.json</span>
+                        <button class="copy-btn" onclick="copyCode(this, 'claude-code')">Copy</button>
+                    </div>
+                    <pre id="claude-code">{
+  "mcpServers": {
+    "indra-cogex": {
+      "url": "https://discovery.indra.bio/mcp"
+    }
+  }
+}</pre>
+                </div>
+                <p>Location: <code class="inline-code">~/Library/Application Support/Claude/claude_desktop_config.json</code> (macOS)</p>
+            </div>
+            
+            <div id="cursor" class="tab-content">
+                <div class="code-block">
+                    <div class="code-header">
+                        <span class="code-title">.cursorrules or settings</span>
+                        <button class="copy-btn" onclick="copyCode(this, 'cursor-code')">Copy</button>
+                    </div>
+                    <pre id="cursor-code">{
+  "mcp": {
+    "servers": {
+      "indra-cogex": {
+        "url": "https://discovery.indra.bio/mcp"
+      }
+    }
+  }
+}</pre>
+                </div>
+            </div>
+            
+            <div id="custom" class="tab-content">
+                <div class="code-block">
+                    <div class="code-header">
+                        <span class="code-title">Generic MCP Configuration</span>
+                        <button class="copy-btn" onclick="copyCode(this, 'custom-code')">Copy</button>
+                    </div>
+                    <pre id="custom-code">{
+  "endpoint": "https://discovery.indra.bio/mcp",
+  "transport": "streamable-http",
+  "method": "POST"
+}</pre>
+                </div>
+            </div>
+            
+            <div class="info-box">
+                <h3>Connection Details</h3>
+                <p><strong>Endpoint:</strong> <code class="inline-code">POST https://discovery.indra.bio/mcp</code></p>
+                <p><strong>Transport:</strong> Streamable HTTP (supports both stateless and stateful modes)</p>
+                <p><strong>Authentication:</strong> None required for public queries</p>
+            </div>
+        </section>
+        
+        <!-- Example Usage -->
+        <section class="section">
+            <h2>Example Usage</h2>
+            
+            <p>Once connected, you can ask your AI assistant natural language questions that will be translated into knowledge graph queries:</p>
+            
+            <div class="collapsible" onclick="toggleCollapsible(this)">
+                <span class="collapsible-title">💬 Example: "What drugs interact with Aspirin?"</span>
+                <span class="collapsible-icon">▼</span>
+            </div>
+            <div class="collapsible-content">
+                <div class="collapsible-content-inner">
+                    <p>The AI will use the server's tools to query drug-drug interactions:</p>
+                    <div class="code-block">
+                        <pre>MATCH (d1:Drug {name: "Aspirin"})-[:INTERACTS]->(d2:Drug)
+RETURN d2.name AS drug, d2.description AS description
+LIMIT 10</pre>
+                    </div>
+                    <p>Results might include drugs like warfarin, ibuprofen, and other NSAIDs that have documented interactions with aspirin.</p>
+                </div>
+            </div>
+            
+            <div class="collapsible" onclick="toggleCollapsible(this)">
+                <span class="collapsible-title">🧬 Example: "Show me genes associated with Alzheimer's disease"</span>
+                <span class="collapsible-icon">▼</span>
+            </div>
+            <div class="collapsible-content">
+                <div class="collapsible-content-inner">
+                    <p>The server can navigate gene-disease associations:</p>
+                    <div class="code-block">
+                        <pre>MATCH (d:Disease {name: "Alzheimer's disease"})-[:ASSOCIATED_WITH]->(g:Gene)
+RETURN g.symbol AS gene, g.name AS full_name
+ORDER BY g.symbol
+LIMIT 20</pre>
+                    </div>
+                    <p>Discover genes like APOE, APP, PSEN1, and others with strong associations to Alzheimer's.</p>
+                </div>
+            </div>
+            
+            <div class="collapsible" onclick="toggleCollapsible(this)">
+                <span class="collapsible-title">🔬 Example: "Validate this Cypher query before running it"</span>
+                <span class="collapsible-icon">▼</span>
+            </div>
+            <div class="collapsible-content">
+                <div class="collapsible-content-inner">
+                    <p>The server provides query validation to catch syntax errors:</p>
+                    <div class="code-block">
+                        <pre>// Ask the AI to validate your query
+validate_cypher("MATCH (n:Protein) WHERE n.name = 'TP53' RETURN n")</pre>
+                    </div>
+                    <p>Get instant feedback on syntax errors, invalid node labels, or missing properties.</p>
+                </div>
+            </div>
+        </section>
+        
+        <!-- Technical Details -->
+        <section class="section">
+            <h2>Technical Details</h2>
+            
+            <h3>Transport & Security</h3>
+            <p>This server uses <strong>Streamable HTTP</strong> transport with the following security features:</p>
+            <ul>
+                <li><strong>DNS Rebinding Protection:</strong> Only accepts connections from authorized hosts</li>
+                <li><strong>CORS Policy:</strong> Configured for allowed origins only</li>
+                <li><strong>Stateless Mode:</strong> Each request is independent for easier horizontal scaling</li>
+                <li><strong>HTTPS:</strong> All production traffic encrypted in transit</li>
+            </ul>
+            
+            <h3>API Contract</h3>
+            <p>The server implements the <a href="https://spec.modelcontextprotocol.io/" target="_blank">MCP specification v1.0+</a> with support for:</p>
+            <ul>
+                <li>Tool invocation (execute_query, validate_cypher, etc.)</li>
+                <li>Resource reading (schema, documentation)</li>
+                <li>Prompt templates (query patterns)</li>
+                <li>Result streaming via Server-Sent Events (SSE)</li>
+            </ul>
+        </section>
+        
+        <!-- Learn More -->
+        <section class="section">
+            <h2>Learn More</h2>
+            
+            <div class="info-box">
+                <h3>Resources</h3>
+                <ul>
+                    <li><strong>MCP Specification:</strong> <a href="https://spec.modelcontextprotocol.io/" target="_blank">spec.modelcontextprotocol.io</a></li>
+                    <li><strong>INDRA CoGEx:</strong> <a href="https://github.com/indralab/indra_cogex" target="_blank">github.com/indralab/indra_cogex</a></li>
+                    <li><strong>Server Source:</strong> <a href="https://github.com/gyorilab/indra_agent" target="_blank">github.com/gyorilab/indra_agent</a></li>
+                    <li><strong>INDRA Documentation:</strong> <a href="https://indra.readthedocs.io/" target="_blank">indra.readthedocs.io</a></li>
+                </ul>
+            </div>
+        </section>
+        
+    </div>
+    
+    <!-- Footer -->
     <div class="footer">
-        <p>INDRA CoGEx MCP Server | Model Context Protocol</p>
+        <p><strong>INDRA CoGEx MCP Server</strong> | Model Context Protocol</p>
+        <p style="margin-top: 10px; font-size: 0.9em;">
+            Developed by <a href="https://github.com/gyorilab" target="_blank">Gyori Lab</a> | 
+            <a href="https://github.com/gyorilab/indra_agent/issues" target="_blank">Report Issues</a>
+        </p>
     </div>
 </div>
+
+<script>
+    // Initialize Mermaid
+    mermaid.initialize({ 
+        startOnLoad: true,
+        theme: 'default',
+        themeVariables: {
+            fontSize: '14px'
+        }
+    });
+    
+    // Tab switching
+    function switchTab(evt, tabName) {
+        // Hide all tab contents
+        const tabContents = document.getElementsByClassName('tab-content');
+        for (let content of tabContents) {
+            content.classList.remove('active');
+        }
+        
+        // Remove active class from all tabs
+        const tabs = document.getElementsByClassName('tab');
+        for (let tab of tabs) {
+            tab.classList.remove('active');
+        }
+        
+        // Show selected tab and mark as active
+        document.getElementById(tabName).classList.add('active');
+        evt.currentTarget.classList.add('active');
+    }
+    
+    // Collapsible sections
+    function toggleCollapsible(element) {
+        element.classList.toggle('open');
+        const content = element.nextElementSibling;
+        content.classList.toggle('open');
+    }
+    
+    // Copy code to clipboard
+    function copyCode(button, codeId) {
+        const code = document.getElementById(codeId).textContent;
+        navigator.clipboard.writeText(code).then(() => {
+            const originalText = button.textContent;
+            button.textContent = 'Copied!';
+            setTimeout(() => {
+                button.textContent = originalText;
+            }, 2000);
+        });
+    }
+</script>
+
 </body>
 </html>
