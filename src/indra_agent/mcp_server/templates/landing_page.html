@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -11,102 +12,169 @@
             padding: 0;
             box-sizing: border-box;
         }
-        
+
         :root {
-            --primary: #667eea;
-            --primary-dark: #5568d3;
-            --secondary: #764ba2;
-            --success: #28a745;
-            --bg-light: #f8f9fa;
-            --bg-code: #2d2d2d;
-            --text: #333;
-            --text-light: #666;
-            --border: #dee2e6;
+            /* Gyori Lab Primary - Signature Teal */
+            --primary: #4dafbc;
+            --primary-dark: #3a8a95;
+            --primary-light: #e6f7f8;
+
+            /* Secondary - Warm accent for CTAs */
+            --secondary: #3a8a95;
+            --accent: #f5b461;
+
+            /* Semantic */
+            --success: #10b981;
+            --warning: #f59e0b;
+            --info: #3b82f6;
+
+            /* Neutrals - Clean laboratory aesthetic */
+            --bg-page: #ffffff;
+            --bg-light: #f8fafc;
+            --bg-code: #1e293b;
+            --text: #1e293b;
+            --text-light: #64748b;
+            --border: #e2e8f0;
+
+            /* Shadows */
+            --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
+            --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+            --shadow-lg: 0 10px 25px -3px rgba(0, 0, 0, 0.1);
         }
-        
+
         body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
             line-height: 1.6;
             color: var(--text);
-            background: linear-gradient(135deg, var(--primary) 0%, var(--secondary) 100%);
+            background: var(--bg-page);
             min-height: 100vh;
-            padding: 20px;
+            padding: 0;
         }
-        
+
         .container {
             background: white;
-            border-radius: 12px;
-            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
-            max-width: 1000px;
+            max-width: 900px;
             width: 100%;
             margin: 0 auto;
             overflow: hidden;
         }
-        
-        /* Hero Section */
+
+        /* Hero Section - Gyori Lab Teal */
         .hero {
-            background: linear-gradient(135deg, var(--primary) 0%, var(--secondary) 100%);
+            background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
             color: white;
-            padding: 60px 40px;
+            padding: 80px 48px;
             text-align: center;
+            position: relative;
         }
-        
+
+        /* Subtle interlocking circles pattern (Gyori Lab motif) */
+        .hero::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background-image:
+                radial-gradient(circle at 20% 80%, rgba(255, 255, 255, 0.08) 0%, transparent 50%),
+                radial-gradient(circle at 80% 20%, rgba(255, 255, 255, 0.08) 0%, transparent 50%),
+                radial-gradient(circle at 40% 40%, rgba(255, 255, 255, 0.05) 0%, transparent 40%);
+            pointer-events: none;
+        }
+
         .hero h1 {
-            font-size: 3em;
-            margin-bottom: 15px;
-            font-weight: 700;
+            font-size: 2.75em;
+            margin-bottom: 12px;
+            font-weight: 600;
+            letter-spacing: -0.02em;
+            position: relative;
         }
-        
+
         .hero .tagline {
-            font-size: 1.4em;
-            margin-bottom: 25px;
-            opacity: 0.95;
+            font-size: 1.25em;
+            margin-bottom: 28px;
+            opacity: 0.92;
+            font-weight: 400;
+            position: relative;
         }
-        
+
         .status {
-            display: inline-block;
-            padding: 8px 20px;
-            background: var(--success);
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 10px 24px;
+            background: rgba(255, 255, 255, 0.2);
+            backdrop-filter: blur(10px);
             color: white;
-            border-radius: 25px;
-            font-size: 1em;
+            border-radius: 100px;
+            font-size: 0.95em;
             font-weight: 500;
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            position: relative;
         }
-        
+
+        .status::before {
+            content: '';
+            width: 8px;
+            height: 8px;
+            background: #4ade80;
+            border-radius: 50%;
+            animation: pulse 2s ease-in-out infinite;
+        }
+
+        @keyframes pulse {
+
+            0%,
+            100% {
+                opacity: 1;
+                transform: scale(1);
+            }
+
+            50% {
+                opacity: 0.6;
+                transform: scale(1.1);
+            }
+        }
+
         /* Quick Concept Visualization */
         .quick-concept {
-            margin-top: 40px;
+            margin-top: 48px;
             display: flex;
             align-items: center;
             justify-content: center;
-            gap: 15px;
+            gap: 12px;
             flex-wrap: wrap;
-            font-size: 0.95em;
+            font-size: 0.9em;
+            position: relative;
         }
-        
+
         .quick-concept .box {
             background: rgba(255, 255, 255, 0.15);
             backdrop-filter: blur(10px);
-            padding: 12px 20px;
+            padding: 10px 18px;
             border-radius: 8px;
-            border: 2px solid rgba(255, 255, 255, 0.3);
+            border: 1px solid rgba(255, 255, 255, 0.25);
             font-weight: 500;
+            transition: all 0.2s ease;
         }
-        
+
+        .quick-concept .box:hover {
+            background: rgba(255, 255, 255, 0.25);
+            transform: translateY(-2px);
+        }
+
         .quick-concept .arrow {
-            font-size: 1.5em;
-            opacity: 0.8;
+            font-size: 1.2em;
+            opacity: 0.7;
         }
-        
+
         /* Content Sections */
         .content {
             padding: 40px;
         }
-        
+
         .section {
             margin-bottom: 40px;
         }
-        
+
         .section h2 {
             color: var(--primary);
             margin-bottom: 20px;
@@ -114,18 +182,18 @@
             border-bottom: 3px solid var(--primary);
             padding-bottom: 10px;
         }
-        
+
         .section h3 {
             color: var(--primary-dark);
             margin: 25px 0 15px 0;
             font-size: 1.4em;
         }
-        
+
         .section p {
             margin-bottom: 15px;
             line-height: 1.8;
         }
-        
+
         .info-box {
             background: var(--bg-light);
             border-left: 4px solid var(--primary);
@@ -133,32 +201,33 @@
             border-radius: 8px;
             margin: 20px 0;
         }
-        
+
         .info-box.highlight {
             background: #e3f2fd;
             border-left-color: #2196f3;
         }
-        
+
         .info-box.success {
             background: #e8f5e9;
             border-left-color: var(--success);
         }
-        
+
         /* Lists */
-        ul, ol {
+        ul,
+        ol {
             margin-left: 25px;
             margin-bottom: 15px;
         }
-        
+
         li {
             margin-bottom: 10px;
             line-height: 1.7;
         }
-        
+
         li strong {
             color: var(--primary);
         }
-        
+
         /* Code Blocks */
         .code-block {
             background: var(--bg-code);
@@ -172,11 +241,11 @@
             line-height: 1.6;
             position: relative;
         }
-        
+
         .code-block .comment {
             color: #75715e;
         }
-        
+
         .code-header {
             display: flex;
             justify-content: space-between;
@@ -185,14 +254,14 @@
             padding-bottom: 10px;
             border-bottom: 1px solid rgba(255, 255, 255, 0.1);
         }
-        
+
         .code-title {
             color: #888;
             font-size: 0.85em;
             text-transform: uppercase;
             letter-spacing: 1px;
         }
-        
+
         .copy-btn {
             background: rgba(102, 126, 234, 0.2);
             border: 1px solid var(--primary);
@@ -203,12 +272,12 @@
             font-size: 0.85em;
             transition: all 0.2s;
         }
-        
+
         .copy-btn:hover {
             background: var(--primary);
             color: white;
         }
-        
+
         .inline-code {
             background: #f1f3f4;
             padding: 2px 6px;
@@ -217,7 +286,7 @@
             font-size: 0.9em;
             color: #c7254e;
         }
-        
+
         /* Diagram Container */
         .diagram-container {
             background: white;
@@ -227,7 +296,7 @@
             border: 1px solid var(--border);
             text-align: center;
         }
-        
+
         /* Tabs */
         .tabs {
             display: flex;
@@ -235,7 +304,7 @@
             margin-bottom: 20px;
             border-bottom: 2px solid var(--border);
         }
-        
+
         .tab {
             padding: 12px 24px;
             background: transparent;
@@ -246,25 +315,25 @@
             border-bottom: 3px solid transparent;
             transition: all 0.2s;
         }
-        
+
         .tab:hover {
             color: var(--primary);
         }
-        
+
         .tab.active {
             color: var(--primary);
             border-bottom-color: var(--primary);
             font-weight: 600;
         }
-        
+
         .tab-content {
             display: none;
         }
-        
+
         .tab-content.active {
             display: block;
         }
-        
+
         /* Collapsible Sections */
         .collapsible {
             background: var(--bg-light);
@@ -277,39 +346,39 @@
             align-items: center;
             transition: all 0.2s;
         }
-        
+
         .collapsible:hover {
             background: #e9ecef;
         }
-        
+
         .collapsible-title {
             font-weight: 600;
             color: var(--primary);
             font-size: 1.1em;
         }
-        
+
         .collapsible-icon {
             transition: transform 0.2s;
         }
-        
+
         .collapsible.open .collapsible-icon {
             transform: rotate(180deg);
         }
-        
+
         .collapsible-content {
             max-height: 0;
             overflow: hidden;
             transition: max-height 0.3s ease;
         }
-        
+
         .collapsible-content.open {
             max-height: 2000px;
         }
-        
+
         .collapsible-content-inner {
             padding: 20px 0;
         }
-        
+
         /* Footer */
         .footer {
             background: var(--bg-light);
@@ -318,47 +387,47 @@
             color: var(--text-light);
             border-top: 1px solid var(--border);
         }
-        
+
         .footer a {
             color: var(--primary);
             text-decoration: none;
         }
-        
+
         .footer a:hover {
             text-decoration: underline;
         }
-        
+
         /* Responsive */
         @media (max-width: 768px) {
             .hero h1 {
                 font-size: 2em;
             }
-            
+
             .hero .tagline {
                 font-size: 1.1em;
             }
-            
+
             .quick-concept {
                 font-size: 0.85em;
             }
-            
+
             .content {
                 padding: 25px;
             }
-            
+
             .section h2 {
                 font-size: 1.6em;
             }
-            
+
             .tabs {
                 flex-direction: column;
             }
-            
+
             .tab {
                 border-bottom: 1px solid var(--border);
                 border-left: 3px solid transparent;
             }
-            
+
             .tab.active {
                 border-left-color: var(--primary);
                 border-bottom-color: var(--border);
@@ -366,136 +435,157 @@
         }
     </style>
 </head>
+
 <body>
-<div class="container">
-    <!-- Hero Section -->
-    <div class="hero">
-        <h1>{{ server_name }}</h1>
-        <p class="tagline">INDRA CoGEx Knowledge Graph via Model Context Protocol</p>
-        <div class="status">✓ Server is running</div>
-        
-        <div class="quick-concept">
-            <div class="box">AI Assistant</div>
-            <div class="arrow">→</div>
-            <div class="box">MCP Protocol</div>
-            <div class="arrow">→</div>
-            <div class="box">This Server</div>
-            <div class="arrow">→</div>
-            <div class="box">Biomedical Knowledge</div>
+    <div class="container">
+        <!-- Hero Section -->
+        <div class="hero">
+            <h1>{{ server_name }}</h1>
+            <p class="tagline">INDRA CoGEx Knowledge Graph via Model Context Protocol</p>
+            <div class="status">✓ Server is running</div>
+
+            <div class="quick-concept">
+                <div class="box">AI Assistant</div>
+                <div class="arrow">→</div>
+                <div class="box">MCP Protocol</div>
+                <div class="arrow">→</div>
+                <div class="box">This Server</div>
+                <div class="arrow">→</div>
+                <div class="box">Biomedical Knowledge</div>
+            </div>
         </div>
-    </div>
-    
-    <!-- Main Content -->
-    <div class="content">
-        
-        <!-- What is MCP Section -->
-        <section class="section">
-            <h2>What is Model Context Protocol (MCP)?</h2>
-            
-            <p><strong>Model Context Protocol (MCP)</strong> is an open standard that enables AI assistants to securely connect to external data sources and tools. Think of it as a universal adapter that lets AI models like Claude access your local files, databases, APIs, and specialized services in a safe, standardized way.</p>
-            
-            <div class="info-box highlight">
-                <h3>Why MCP Matters</h3>
-                <ul>
-                    <li><strong>Universal Standard:</strong> One protocol for connecting any AI client to any data source</li>
-                    <li><strong>Security First:</strong> Built-in protections against unauthorized access and DNS rebinding attacks</li>
-                    <li><strong>Extensible:</strong> Easily add new capabilities without modifying the AI assistant</li>
-                    <li><strong>Separation of Concerns:</strong> Data providers focus on their domain; AI clients focus on reasoning</li>
-                </ul>
-            </div>
-            
-            <h3>How MCP Works</h3>
-            
-            <div class="diagram-container">
-                <div class="mermaid">
-graph LR
-    A[AI Client<br/>Claude, Cursor, etc.] -->|MCP Protocol| B[MCP Server<br/>indra-cogex]
-    B --> C[Tools<br/>Execute queries]
-    B --> D[Resources<br/>Graph schema]
-    B --> E[Prompts<br/>Query templates]
-    C --> F[Neo4j Database<br/>Knowledge Graph]
-    D --> F
-    E --> F
-    
-    style A fill:#667eea,stroke:#5568d3,color:#fff
-    style B fill:#764ba2,stroke:#6a3f8f,color:#fff
-    style F fill:#48bb78,stroke:#38a169,color:#fff
-    style C fill:#e3f2fd,stroke:#2196f3
-    style D fill:#e3f2fd,stroke:#2196f3
-    style E fill:#e3f2fd,stroke:#2196f3
+
+        <!-- Main Content -->
+        <div class="content">
+
+            <!-- What is MCP Section -->
+            <section class="section">
+                <h2>What is Model Context Protocol (MCP)?</h2>
+
+                <p><strong>Model Context Protocol (MCP)</strong> is an open standard that enables AI assistants to
+                    securely connect to external data sources and tools. Think of it as a universal adapter that lets AI
+                    models like Claude access your local files, databases, APIs, and specialized services in a safe,
+                    standardized way.</p>
+
+                <div class="info-box highlight">
+                    <h3>Why MCP Matters</h3>
+                    <ul>
+                        <li><strong>Universal Standard:</strong> One protocol for connecting any AI client to any data
+                            source</li>
+                        <li><strong>Security First:</strong> Built-in protections against unauthorized access and DNS
+                            rebinding attacks</li>
+                        <li><strong>Extensible:</strong> Easily add new capabilities without modifying the AI assistant
+                        </li>
+                        <li><strong>Separation of Concerns:</strong> Data providers focus on their domain; AI clients
+                            focus on reasoning</li>
+                    </ul>
                 </div>
-            </div>
-            
-            <p>MCP defines three core primitives:</p>
-            <ul>
-                <li><strong>Tools:</strong> Functions the AI can invoke (e.g., execute a Cypher query, validate syntax)</li>
-                <li><strong>Resources:</strong> Data the AI can read (e.g., schema information, documentation)</li>
-                <li><strong>Prompts:</strong> Templates to guide the AI's interactions (e.g., query patterns)</li>
-            </ul>
-        </section>
-        
-        <!-- About This Server -->
-        <section class="section">
-            <h2>About This MCP Server</h2>
-            
-            <p>This server provides programmatic access to the <strong>INDRA CoGEx</strong> knowledge graph—a comprehensive biomedical knowledge base integrating multiple sources of biological and chemical information.</p>
-            
-            <div class="info-box success">
-                <h3>What You Can Do</h3>
-                <ul>
-                    <li><strong>Explore Biology:</strong> Query relationships between genes, proteins, diseases, drugs, and more</li>
-                    <li><strong>Discover Connections:</strong> Navigate complex pathways and interaction networks</li>
-                    <li><strong>Validate Knowledge:</strong> Cross-reference information from multiple authoritative sources</li>
-                    <li><strong>Research Assistance:</strong> Let AI help you formulate and execute sophisticated queries</li>
-                </ul>
-            </div>
-            
-            <h3>Server Capabilities</h3>
-            <ul>
-                <li><strong>Schema Discovery:</strong> Explore graph structure and entity types available in CoGEx</li>
-                <li><strong>Query Execution:</strong> Execute Cypher queries on the Neo4j knowledge graph</li>
-                <li><strong>Query Validation:</strong> Validate query syntax before execution to catch errors early</li>
-                <li><strong>Result Enrichment:</strong> Automatically add metadata and context to query results</li>
-                <li><strong>Graph Navigation:</strong> Use specialized tools to traverse the knowledge graph efficiently</li>
-            </ul>
-        </section>
-        
-        <!-- How to Connect -->
-        <section class="section">
-            <h2>How to Connect</h2>
-            
-            <p>Configure your MCP-compatible AI client to connect to this server. The configuration varies slightly by client:</p>
-            
-            <div class="tabs">
-                <button class="tab active" onclick="switchTab(event, 'claude')">Claude Desktop</button>
-                <button class="tab" onclick="switchTab(event, 'cursor')">Cursor</button>
-                <button class="tab" onclick="switchTab(event, 'custom')">Custom Client</button>
-            </div>
-            
-            <div id="claude" class="tab-content active">
-                <div class="code-block">
-                    <div class="code-header">
-                        <span class="code-title">claude_desktop_config.json</span>
-                        <button class="copy-btn" onclick="copyCode(this, 'claude-code')">Copy</button>
+
+                <h3>How MCP Works</h3>
+
+                <div class="diagram-container">
+                    <div class="mermaid">
+                        graph LR
+                        A[AI Client<br />Claude, Cursor, etc.] -->|MCP Protocol| B[MCP Server<br />indra-cogex]
+                        B --> C[Tools<br />Execute queries]
+                        B --> D[Resources<br />Graph schema]
+                        B --> E[Prompts<br />Query templates]
+                        C --> F[Neo4j Database<br />Knowledge Graph]
+                        D --> F
+                        E --> F
+
+                        style A fill:#4dafbc,stroke:#3a8a95,color:#fff
+                        style B fill:#3a8a95,stroke:#2d6f78,color:#fff
+                        style F fill:#10b981,stroke:#059669,color:#fff
+                        style C fill:#e6f7f8,stroke:#4dafbc
+                        style D fill:#e6f7f8,stroke:#4dafbc
+                        style E fill:#e6f7f8,stroke:#4dafbc
                     </div>
-                    <pre id="claude-code">{
+                </div>
+
+                <p>MCP defines three core primitives:</p>
+                <ul>
+                    <li><strong>Tools:</strong> Functions the AI can invoke (e.g., execute a Cypher query, validate
+                        syntax)</li>
+                    <li><strong>Resources:</strong> Data the AI can read (e.g., schema information, documentation)</li>
+                    <li><strong>Prompts:</strong> Templates to guide the AI's interactions (e.g., query patterns)</li>
+                </ul>
+            </section>
+
+            <!-- About This Server -->
+            <section class="section">
+                <h2>About This MCP Server</h2>
+
+                <p>This server provides programmatic access to the <strong>INDRA CoGEx</strong> knowledge graph—a
+                    comprehensive biomedical knowledge base integrating multiple sources of biological and chemical
+                    information.</p>
+
+                <div class="info-box success">
+                    <h3>What You Can Do</h3>
+                    <ul>
+                        <li><strong>Explore Biology:</strong> Query relationships between genes, proteins, diseases,
+                            drugs, and more</li>
+                        <li><strong>Discover Connections:</strong> Navigate complex pathways and interaction networks
+                        </li>
+                        <li><strong>Validate Knowledge:</strong> Cross-reference information from multiple authoritative
+                            sources</li>
+                        <li><strong>Research Assistance:</strong> Let AI help you formulate and execute sophisticated
+                            queries</li>
+                    </ul>
+                </div>
+
+                <h3>Server Capabilities</h3>
+                <ul>
+                    <li><strong>Schema Discovery:</strong> Explore graph structure and entity types available in CoGEx
+                    </li>
+                    <li><strong>Query Execution:</strong> Execute Cypher queries on the Neo4j knowledge graph</li>
+                    <li><strong>Query Validation:</strong> Validate query syntax before execution to catch errors early
+                    </li>
+                    <li><strong>Result Enrichment:</strong> Automatically add metadata and context to query results</li>
+                    <li><strong>Graph Navigation:</strong> Use specialized tools to traverse the knowledge graph
+                        efficiently</li>
+                </ul>
+            </section>
+
+            <!-- How to Connect -->
+            <section class="section">
+                <h2>How to Connect</h2>
+
+                <p>Configure your MCP-compatible AI client to connect to this server. The configuration varies slightly
+                    by client:</p>
+
+                <div class="tabs">
+                    <button class="tab active" onclick="switchTab(event, 'claude')">Claude Desktop</button>
+                    <button class="tab" onclick="switchTab(event, 'cursor')">Cursor</button>
+                    <button class="tab" onclick="switchTab(event, 'custom')">Custom Client</button>
+                </div>
+
+                <div id="claude" class="tab-content active">
+                    <div class="code-block">
+                        <div class="code-header">
+                            <span class="code-title">claude_desktop_config.json</span>
+                            <button class="copy-btn" onclick="copyCode(this, 'claude-code')">Copy</button>
+                        </div>
+                        <pre id="claude-code">{
   "mcpServers": {
     "indra-cogex": {
       "url": "https://discovery.indra.bio/mcp"
     }
   }
 }</pre>
-                </div>
-                <p>Location: <code class="inline-code">~/Library/Application Support/Claude/claude_desktop_config.json</code> (macOS)</p>
-            </div>
-            
-            <div id="cursor" class="tab-content">
-                <div class="code-block">
-                    <div class="code-header">
-                        <span class="code-title">.cursorrules or settings</span>
-                        <button class="copy-btn" onclick="copyCode(this, 'cursor-code')">Copy</button>
                     </div>
-                    <pre id="cursor-code">{
+                    <p>Location: <code
+                            class="inline-code">~/Library/Application Support/Claude/claude_desktop_config.json</code>
+                        (macOS)</p>
+                </div>
+
+                <div id="cursor" class="tab-content">
+                    <div class="code-block">
+                        <div class="code-header">
+                            <span class="code-title">.cursorrules or settings</span>
+                            <button class="copy-btn" onclick="copyCode(this, 'cursor-code')">Copy</button>
+                        </div>
+                        <pre id="cursor-code">{
   "mcp": {
     "servers": {
       "indra-cogex": {
@@ -504,184 +594,537 @@ graph LR
     }
   }
 }</pre>
-                </div>
-            </div>
-            
-            <div id="custom" class="tab-content">
-                <div class="code-block">
-                    <div class="code-header">
-                        <span class="code-title">Generic MCP Configuration</span>
-                        <button class="copy-btn" onclick="copyCode(this, 'custom-code')">Copy</button>
                     </div>
-                    <pre id="custom-code">{
+                </div>
+
+                <div id="custom" class="tab-content">
+                    <div class="code-block">
+                        <div class="code-header">
+                            <span class="code-title">Generic MCP Configuration</span>
+                            <button class="copy-btn" onclick="copyCode(this, 'custom-code')">Copy</button>
+                        </div>
+                        <pre id="custom-code">{
   "endpoint": "https://discovery.indra.bio/mcp",
   "transport": "streamable-http",
   "method": "POST"
 }</pre>
-                </div>
-            </div>
-            
-            <div class="info-box">
-                <h3>Connection Details</h3>
-                <p><strong>Endpoint:</strong> <code class="inline-code">POST https://discovery.indra.bio/mcp</code></p>
-                <p><strong>Transport:</strong> Streamable HTTP (supports both stateless and stateful modes)</p>
-                <p><strong>Authentication:</strong> None required for public queries</p>
-            </div>
-        </section>
-        
-        <!-- Example Usage -->
-        <section class="section">
-            <h2>Example Usage</h2>
-            
-            <p>Once connected, you can ask your AI assistant natural language questions that will be translated into knowledge graph queries:</p>
-            
-            <div class="collapsible" onclick="toggleCollapsible(this)">
-                <span class="collapsible-title">💬 Example: "What drugs interact with Aspirin?"</span>
-                <span class="collapsible-icon">▼</span>
-            </div>
-            <div class="collapsible-content">
-                <div class="collapsible-content-inner">
-                    <p>The AI will use the server's tools to query drug-drug interactions:</p>
-                    <div class="code-block">
-                        <pre>MATCH (d1:Drug {name: "Aspirin"})-[:INTERACTS]->(d2:Drug)
-RETURN d2.name AS drug, d2.description AS description
-LIMIT 10</pre>
                     </div>
-                    <p>Results might include drugs like warfarin, ibuprofen, and other NSAIDs that have documented interactions with aspirin.</p>
                 </div>
-            </div>
-            
-            <div class="collapsible" onclick="toggleCollapsible(this)">
-                <span class="collapsible-title">🧬 Example: "Show me genes associated with Alzheimer's disease"</span>
-                <span class="collapsible-icon">▼</span>
-            </div>
-            <div class="collapsible-content">
-                <div class="collapsible-content-inner">
-                    <p>The server can navigate gene-disease associations:</p>
-                    <div class="code-block">
-                        <pre>MATCH (d:Disease {name: "Alzheimer's disease"})-[:ASSOCIATED_WITH]->(g:Gene)
-RETURN g.symbol AS gene, g.name AS full_name
-ORDER BY g.symbol
-LIMIT 20</pre>
-                    </div>
-                    <p>Discover genes like APOE, APP, PSEN1, and others with strong associations to Alzheimer's.</p>
-                </div>
-            </div>
-            
-            <div class="collapsible" onclick="toggleCollapsible(this)">
-                <span class="collapsible-title">🔬 Example: "Validate this Cypher query before running it"</span>
-                <span class="collapsible-icon">▼</span>
-            </div>
-            <div class="collapsible-content">
-                <div class="collapsible-content-inner">
-                    <p>The server provides query validation to catch syntax errors:</p>
-                    <div class="code-block">
-                        <pre>// Ask the AI to validate your query
-validate_cypher("MATCH (n:Protein) WHERE n.name = 'TP53' RETURN n")</pre>
-                    </div>
-                    <p>Get instant feedback on syntax errors, invalid node labels, or missing properties.</p>
-                </div>
-            </div>
-        </section>
-        
-        <!-- Technical Details -->
-        <section class="section">
-            <h2>Technical Details</h2>
-            
-            <h3>Transport & Security</h3>
-            <p>This server uses <strong>Streamable HTTP</strong> transport with the following security features:</p>
-            <ul>
-                <li><strong>DNS Rebinding Protection:</strong> Only accepts connections from authorized hosts</li>
-                <li><strong>CORS Policy:</strong> Configured for allowed origins only</li>
-                <li><strong>Stateless Mode:</strong> Each request is independent for easier horizontal scaling</li>
-                <li><strong>HTTPS:</strong> All production traffic encrypted in transit</li>
-            </ul>
-            
-            <h3>API Contract</h3>
-            <p>The server implements the <a href="https://spec.modelcontextprotocol.io/" target="_blank">MCP specification v1.0+</a> with support for:</p>
-            <ul>
-                <li>Tool invocation (execute_query, validate_cypher, etc.)</li>
-                <li>Resource reading (schema, documentation)</li>
-                <li>Prompt templates (query patterns)</li>
-                <li>Result streaming via Server-Sent Events (SSE)</li>
-            </ul>
-        </section>
-        
-        <!-- Learn More -->
-        <section class="section">
-            <h2>Learn More</h2>
-            
-            <div class="info-box">
-                <h3>Resources</h3>
-                <ul>
-                    <li><strong>MCP Specification:</strong> <a href="https://spec.modelcontextprotocol.io/" target="_blank">spec.modelcontextprotocol.io</a></li>
-                    <li><strong>INDRA CoGEx:</strong> <a href="https://github.com/indralab/indra_cogex" target="_blank">github.com/indralab/indra_cogex</a></li>
-                    <li><strong>Server Source:</strong> <a href="https://github.com/gyorilab/indra_agent" target="_blank">github.com/gyorilab/indra_agent</a></li>
-                    <li><strong>INDRA Documentation:</strong> <a href="https://indra.readthedocs.io/" target="_blank">indra.readthedocs.io</a></li>
-                </ul>
-            </div>
-        </section>
-        
-    </div>
-    
-    <!-- Footer -->
-    <div class="footer">
-        <p><strong>INDRA CoGEx MCP Server</strong> | Model Context Protocol</p>
-        <p style="margin-top: 10px; font-size: 0.9em;">
-            Developed by <a href="https://github.com/gyorilab" target="_blank">Gyori Lab</a> | 
-            <a href="https://github.com/gyorilab/indra_agent/issues" target="_blank">Report Issues</a>
-        </p>
-    </div>
-</div>
 
-<script>
-    // Initialize Mermaid
-    mermaid.initialize({ 
-        startOnLoad: true,
-        theme: 'default',
-        themeVariables: {
-            fontSize: '14px'
-        }
-    });
-    
-    // Tab switching
-    function switchTab(evt, tabName) {
-        // Hide all tab contents
-        const tabContents = document.getElementsByClassName('tab-content');
-        for (let content of tabContents) {
-            content.classList.remove('active');
-        }
-        
-        // Remove active class from all tabs
-        const tabs = document.getElementsByClassName('tab');
-        for (let tab of tabs) {
-            tab.classList.remove('active');
-        }
-        
-        // Show selected tab and mark as active
-        document.getElementById(tabName).classList.add('active');
-        evt.currentTarget.classList.add('active');
-    }
-    
-    // Collapsible sections
-    function toggleCollapsible(element) {
-        element.classList.toggle('open');
-        const content = element.nextElementSibling;
-        content.classList.toggle('open');
-    }
-    
-    // Copy code to clipboard
-    function copyCode(button, codeId) {
-        const code = document.getElementById(codeId).textContent;
-        navigator.clipboard.writeText(code).then(() => {
-            const originalText = button.textContent;
-            button.textContent = 'Copied!';
-            setTimeout(() => {
-                button.textContent = originalText;
-            }, 2000);
+                <div class="info-box">
+                    <h3>Connection Details</h3>
+                    <p><strong>Endpoint:</strong> <code class="inline-code">POST https://discovery.indra.bio/mcp</code>
+                    </p>
+                    <p><strong>Transport:</strong> Streamable HTTP (supports both stateless and stateful modes)</p>
+                    <p><strong>Authentication:</strong> None required for public queries</p>
+                </div>
+            </section>
+
+            <!-- Example Usage -->
+            <section class="section">
+                <h2>Example Usage</h2>
+
+                <p>Once connected, simply ask questions in plain English. The AI handles all the complexity of querying
+                    the knowledge graph—you focus on the science:</p>
+
+                <div class="collapsible" onclick="toggleCollapsible(this)">
+                    <span class="collapsible-title">💊 Drug Repurposing Discovery</span>
+                    <span class="collapsible-icon">▼</span>
+                </div>
+                <div class="collapsible-content">
+                    <div class="collapsible-content-inner">
+                        <p><strong>Ask:</strong> <em>"Find drugs that target genes associated with ALS—I'm looking for
+                                repurposing candidates with clinical evidence."</em></p>
+
+                        <h3>Step 1: Ground "ALS" to a canonical identifier</h3>
+                        <div class="code-block">
+                            <div class="code-header">
+                                <span class="code-title">ground_entity(term="ALS", param_name="disease")</span>
+                            </div>
+                            <pre>{
+  "query": "ALS",
+  "top_match": {
+    "curie": "mesh:D000690",
+    "name": "Amyotrophic Lateral Sclerosis",
+    "score": 0.556
+  }
+}</pre>
+                        </div>
+
+                        <h3>Step 2: Find genes associated with ALS</h3>
+                        <div class="code-block">
+                            <div class="code-header">
+                                <span class="code-title">call_endpoint("get_genes_for_disease", disease=["mesh",
+                                    "D000690"])</span>
+                            </div>
+                            <pre>{
+  "results": [
+    {"name": "SOD1", "db_ns": "HGNC", "db_id": "11179"},
+    {"name": "TARDBP", "db_ns": "HGNC", "db_id": "11571"},
+    {"name": "SQSTM1", "db_ns": "HGNC", "db_id": "11280"},
+    {"name": "ATXN2", "db_ns": "HGNC", "db_id": "10555"},
+    {"name": "PTGS2", "db_ns": "HGNC", "db_id": "9605"},
+    <span class="comment">// ... 24 more genes</span>
+  ],
+  "pagination": {"total": 29, "has_more": true}
+}</pre>
+                        </div>
+
+                        <h3>Step 3: Find drugs targeting PTGS2 (COX-2)</h3>
+                        <div class="code-block">
+                            <div class="code-header">
+                                <span class="code-title">call_endpoint("get_drugs_for_target", target=["hgnc",
+                                    "9605"])</span>
+                            </div>
+                            <pre>{
+  "results": [
+    {"name": "ebselen", "db_ns": "CHEBI", "db_id": "CHEBI:77543"},
+    {"name": "rofecoxib", "db_ns": "CHEBI", "db_id": "CHEBI:8887"},
+    {"name": "pterostilbene", "db_ns": "CHEBI", "db_id": "CHEBI:8630"},
+    {"name": "parthenolide", "db_ns": "CHEBI", "db_id": "CHEBI:7939"},
+    <span class="comment">// ... 63 more drugs</span>
+  ],
+  "pagination": {"total": 67, "has_more": true}
+}</pre>
+                        </div>
+
+                        <h3>Step 4: Check clinical trials for ebselen</h3>
+                        <div class="code-block">
+                            <div class="code-header">
+                                <span class="code-title">call_endpoint("get_trials_for_drug", drug=["chebi",
+                                    "CHEBI:77543"])</span>
+                            </div>
+                            <pre>{
+  "results": [
+    {"phase": 3, "status": "not_yet_recruiting", "db_id": "NCT06859788", "start_year": 2025},
+    {"phase": 3, "status": "completed", "db_id": "NCT04677972", "completion_year": 2024},
+    {"phase": 2, "status": "completed", "db_id": "NCT03325790", "completion_year": 2019},
+    <span class="comment">// ... 12 more trials</span>
+  ],
+  "pagination": {"total": 15, "has_more": true}
+}</pre>
+                        </div>
+
+                        <div class="info-box success">
+                            <strong>💡 Discovery:</strong> Through PTGS2 (an ALS-associated gene encoding COX-2), we
+                            found ebselen—a selenium compound with 15 clinical trials including Phase 3 studies. This
+                            cross-disease insight is exactly what powers drug repurposing research.
+                        </div>
+                    </div>
+                </div>
+
+                <div class="collapsible" onclick="toggleCollapsible(this)">
+                    <span class="collapsible-title">🧬 Multi-Target Pathway Analysis</span>
+                    <span class="collapsible-icon">▼</span>
+                </div>
+                <div class="collapsible-content">
+                    <div class="collapsible-content-inner">
+                        <p><strong>Ask:</strong> <em>"Which genes are shared between Parkinson's and Alzheimer's
+                                disease? Find drugs targeting these shared genes."</em></p>
+
+                        <h3>Step 1: Ground both diseases</h3>
+                        <div class="code-block">
+                            <div class="code-header">
+                                <span class="code-title">ground_entity(term="Parkinson disease") /
+                                    ground_entity(term="Alzheimer disease")</span>
+                            </div>
+                            <pre>{
+  "parkinson": {"curie": "doid:14330", "name": "Parkinson Disease", "score": 0.772},
+  "alzheimer": {"curie": "doid:10652", "name": "Alzheimer Disease", "score": 0.778}
+}</pre>
+                        </div>
+
+                        <h3>Step 2: Get genes for each disease</h3>
+                        <div class="code-block">
+                            <div class="code-header">
+                                <span class="code-title">call_endpoint("get_genes_for_disease", disease=["doid",
+                                    "14330"])</span>
+                            </div>
+                            <pre>{
+  "results": [
+    {"name": "SNCA", "db_ns": "HGNC", "db_id": "11138"},
+    {"name": "PINK1", "db_ns": "HGNC", "db_id": "14581"},
+    {"name": "PRKN", "db_ns": "HGNC", "db_id": "8607"},
+    {"name": "TNF", "db_ns": "HGNC", "db_id": "11892"},
+    {"name": "SOD2", "db_ns": "HGNC", "db_id": "11180"},
+    {"name": "BDNF", "db_ns": "HGNC", "db_id": "1033"},
+    {"name": "MAPT", "db_ns": "HGNC", "db_id": "6893"},
+    <span class="comment">// ... 77 more genes</span>
+  ],
+  "pagination": {"total": 84, "has_more": true}
+}</pre>
+                        </div>
+
+                        <div class="code-block">
+                            <div class="code-header">
+                                <span class="code-title">call_endpoint("get_genes_for_disease", disease=["doid",
+                                    "10652"])</span>
+                            </div>
+                            <pre>{
+  "results": [
+    {"name": "PSEN1", "db_ns": "HGNC", "db_id": "9508"},
+    {"name": "APP", "db_ns": "HGNC", "db_id": "620"},
+    {"name": "TNF", "db_ns": "HGNC", "db_id": "11892"},
+    {"name": "SOD2", "db_ns": "HGNC", "db_id": "11180"},
+    {"name": "BDNF", "db_ns": "HGNC", "db_id": "1033"},
+    {"name": "NECTIN2", "db_ns": "HGNC", "db_id": "9707"},
+    <span class="comment">// ... 95 more genes</span>
+  ],
+  "pagination": {"total": 101, "has_more": true}
+}</pre>
+                        </div>
+
+                        <h3>Step 3: Find drugs targeting shared gene TNF</h3>
+                        <div class="code-block">
+                            <div class="code-header">
+                                <span class="code-title">call_endpoint("get_drugs_for_target", target=["hgnc",
+                                    "11892"])</span>
+                            </div>
+                            <pre>{
+  "results": [
+    {"name": "luteolin 7-O-beta-D-glucoside", "db_ns": "CHEBI"},
+    {"name": "apigenin 7-O-beta-D-glucoside", "db_ns": "CHEBI"},
+    {"name": "Ganoderic acid A", "db_ns": "CHEBI"},
+    {"name": "Ganoderic acid C1", "db_ns": "CHEBI"},
+    <span class="comment">// ... 3 more drugs</span>
+  ],
+  "pagination": {"total": 7}
+}</pre>
+                        </div>
+
+                        <div class="info-box success">
+                            <strong>💡 Discovery:</strong> 84 Parkinson's genes and 101 Alzheimer's genes share key
+                            neuroinflammatory mediators including <strong>TNF</strong>, <strong>SOD2</strong>,
+                            <strong>BDNF</strong>, and <strong>NECTIN2</strong>. TNF-targeting compounds like luteolin
+                            and ganoderic acids represent potential cross-disease therapeutic candidates.
+                        </div>
+                    </div>
+                </div>
+
+                <div class="collapsible" onclick="toggleCollapsible(this)">
+                    <span class="collapsible-title">🏥 Clinical Trial Landscape</span>
+                    <span class="collapsible-icon">▼</span>
+                </div>
+                <div class="collapsible-content">
+                    <div class="collapsible-content-inner">
+                        <p><strong>Ask:</strong> <em>"Show me clinical trials and drugs for pancreatic cancer. What's
+                                the competitive landscape?"</em></p>
+
+                        <h3>Step 1: Ground the indication</h3>
+                        <div class="code-block">
+                            <div class="code-header">
+                                <span class="code-title">ground_entity(term="pancreatic cancer",
+                                    param_name="disease")</span>
+                            </div>
+                            <pre>{
+  "top_match": {
+    "curie": "mesh:D010190",
+    "name": "Pancreatic Neoplasms",
+    "score": 0.778
+  }
+}</pre>
+                        </div>
+
+                        <h3>Step 2: Get clinical trials</h3>
+                        <div class="code-block">
+                            <div class="code-header">
+                                <span class="code-title">call_endpoint("get_trials_for_disease", disease=["mesh",
+                                    "D010190"])</span>
+                            </div>
+                            <pre>{
+  "results": [
+    {"phase": 3, "status": "recruiting", "db_id": "NCT07098598", "start_year": 2024},
+    {"phase": 2, "status": "not_yet_recruiting", "db_id": "NCT07121478", "completion_year": 2029},
+    {"phase": 2, "status": "not_yet_recruiting", "db_id": "NCT07114315", "completion_year": 2028},
+    {"phase": 1, "status": "recruiting", "db_id": "NCT07118176", "completion_year": 2027},
+    <span class="comment">// ... 3,475 more trials</span>
+  ],
+  "pagination": {"total": 3479, "has_more": true}
+}</pre>
+                        </div>
+
+                        <h3>Step 3: Get drugs indicated for this cancer</h3>
+                        <div class="code-block">
+                            <div class="code-header">
+                                <span class="code-title">call_endpoint("get_drugs_for_indication", indication=["mesh",
+                                    "D010190"])</span>
+                            </div>
+                            <pre>{
+  "results": [
+    {"name": "NAPABUCASIN", "db_ns": "CHEMBL"},
+    {"name": "LOSARTAN POTASSIUM", "db_ns": "CHEMBL"},
+    {"name": "TALABOSTAT", "db_ns": "CHEMBL"},
+    {"name": "ARSENIC TRIOXIDE", "db_ns": "CHEMBL"},
+    {"name": "BI 2536", "db_ns": "MESH"},
+    <span class="comment">// ... 455 more drugs</span>
+  ],
+  "pagination": {"total": 460, "has_more": true}
+}</pre>
+                        </div>
+
+                        <div class="info-box success">
+                            <strong>💡 Insight:</strong> <strong>3,479 clinical trials</strong> and <strong>460
+                                drugs</strong> for pancreatic cancer—immediate competitive landscape intelligence.
+                            Filter by phase, status, and mechanism to identify white space opportunities.
+                        </div>
+                    </div>
+                </div>
+
+                <div class="collapsible" onclick="toggleCollapsible(this)">
+                    <span class="collapsible-title">🔬 Drug-Target-Disease Triangulation</span>
+                    <span class="collapsible-icon">▼</span>
+                </div>
+                <div class="collapsible-content">
+                    <div class="collapsible-content-inner">
+                        <p><strong>Ask:</strong> <em>"For EGFR, show me all diseases where it's implicated and drugs
+                                that target it."</em></p>
+
+                        <h3>Step 1: Ground the gene</h3>
+                        <div class="code-block">
+                            <div class="code-header">
+                                <span class="code-title">ground_entity(term="EGFR", param_name="gene")</span>
+                            </div>
+                            <pre>{
+  "top_match": {
+    "curie": "hgnc:3236",
+    "name": "EGFR",
+    "score": 1.0
+  }
+}</pre>
+                        </div>
+
+                        <h3>Step 2: Get diseases for this gene</h3>
+                        <div class="code-block">
+                            <div class="code-header">
+                                <span class="code-title">call_endpoint("get_diseases_for_gene", gene=["hgnc",
+                                    "3236"])</span>
+                            </div>
+                            <pre>{
+  "results": [
+    {"name": "Colorectal Neoplasms", "db_ns": "MESH"},
+    {"name": "Cholangiocarcinoma", "db_ns": "MESH"},
+    {"name": "head and neck carcinoma", "db_ns": "MONDO"},
+    {"name": "Stomach Neoplasms", "db_ns": "MESH"},
+    {"name": "Endometrial adenocarcinoma", "db_ns": "UMLS"},
+    <span class="comment">// ... 93 more diseases</span>
+  ],
+  "pagination": {"total": 98, "has_more": true}
+}</pre>
+                        </div>
+
+                        <h3>Step 3: Get drugs targeting EGFR</h3>
+                        <div class="code-block">
+                            <div class="code-header">
+                                <span class="code-title">call_endpoint("get_drugs_for_target", target=["hgnc",
+                                    "3236"])</span>
+                            </div>
+                            <pre>{
+  "results": [
+    {"name": "BI 2536", "db_ns": "MESH"},
+    {"name": "PD158780", "db_ns": "CHEBI"},
+    {"name": "5,6-bis(4-fluoroanilino)isoindole-1,3-dione", "db_ns": "CHEBI"},
+    <span class="comment">// ... 75 more drugs</span>
+  ],
+  "pagination": {"total": 78, "has_more": true}
+}</pre>
+                        </div>
+
+                        <div class="info-box success">
+                            <strong>💡 Complete Target Profile:</strong> EGFR is implicated in <strong>98
+                                diseases</strong> spanning oncology (colorectal, lung, head/neck) and inflammatory
+                            conditions. <strong>78 compounds</strong> target it—from approved TKIs to experimental
+                            molecules.
+                        </div>
+                    </div>
+                </div>
+
+                <div class="collapsible" onclick="toggleCollapsible(this)">
+                    <span class="collapsible-title">📊 Mechanism of Action Deep Dive</span>
+                    <span class="collapsible-icon">▼</span>
+                </div>
+                <div class="collapsible-content">
+                    <div class="collapsible-content-inner">
+                        <p><strong>Ask:</strong> <em>"What conditions is metformin being studied for beyond diabetes?
+                                Show me the breadth of indications."</em></p>
+
+                        <h3>Step 1: Ground the drug</h3>
+                        <div class="code-block">
+                            <div class="code-header">
+                                <span class="code-title">ground_entity(term="metformin", param_name="drug")</span>
+                            </div>
+                            <pre>{
+  "top_match": {
+    "curie": "chebi:6801",
+    "name": "metformin",
+    "score": 1.0
+  }
+}</pre>
+                        </div>
+
+                        <h3>Step 2: Get all indications</h3>
+                        <div class="code-block">
+                            <div class="code-header">
+                                <span class="code-title">call_endpoint("get_indications_for_drug", molecule=["chebi",
+                                    "6801"])</span>
+                            </div>
+                            <pre>{
+  "results": [
+    {"name": "Non-alcoholic Fatty Liver Disease", "db_ns": "MESH"},
+    {"name": "Triple Negative Breast Neoplasms", "db_ns": "MESH"},
+    {"name": "Prostatic Neoplasms, Castration-Resistant", "db_ns": "MESH"},
+    {"name": "Cognitive Dysfunction", "db_ns": "MESH"},
+    {"name": "Frontotemporal Dementia", "db_ns": "MESH"},
+    {"name": "Heart Failure, Systolic", "db_ns": "MESH"},
+    {"name": "Small Cell Lung Carcinoma", "db_ns": "MESH"},
+    {"name": "Acute Coronary Syndrome", "db_ns": "MESH"},
+    <span class="comment">// ... 186 more indications</span>
+  ],
+  "pagination": {"total": 194, "has_more": true}
+}</pre>
+                        </div>
+
+                        <div class="info-box success">
+                            <strong>💡 Pleiotropic Discovery:</strong> Metformin is being studied for <strong>194
+                                conditions</strong> far beyond diabetes—oncology (TNBC, prostate, lung),
+                            neurodegeneration (dementia), cardiovascular (heart failure, ACS), and metabolic disease.
+                            This is AMPK/mTOR pathway modulation in action.
+                        </div>
+                    </div>
+                </div>
+
+                <div class="collapsible" onclick="toggleCollapsible(this)">
+                    <span class="collapsible-title">🧪 Biomarker Discovery</span>
+                    <span class="collapsible-icon">▼</span>
+                </div>
+                <div class="collapsible-content">
+                    <div class="collapsible-content-inner">
+                        <p><strong>Ask:</strong> <em>"What genes are associated with triple-negative breast cancer? Are
+                                any druggable?"</em></p>
+
+                        <h3>Step 1: Ground the disease</h3>
+                        <div class="code-block">
+                            <div class="code-header">
+                                <span class="code-title">ground_entity(term="triple-negative breast cancer",
+                                    param_name="disease")</span>
+                            </div>
+                            <pre>{
+  "top_match": {
+    "curie": "mesh:D064726",
+    "name": "Triple Negative Breast Neoplasms",
+    "score": 0.778
+  }
+}</pre>
+                        </div>
+
+                        <h3>Step 2: Get associated genes</h3>
+                        <div class="code-block">
+                            <div class="code-header">
+                                <span class="code-title">call_endpoint("get_genes_for_disease", disease=["mesh",
+                                    "D064726"])</span>
+                            </div>
+                            <pre>{
+  "results": [
+    {"name": "LRP6", "type": "human_gene_protein", "db_ns": "HGNC"},
+    {"name": "KRAS", "type": "human_gene_protein", "db_ns": "HGNC"},
+    {"name": "MIR873", "type": "human_rna", "db_ns": "HGNC"},
+    {"name": "YAP1", "type": "human_gene_protein", "db_ns": "HGNC"}
+  ],
+  "pagination": {"total": 4}
+}</pre>
+                        </div>
+
+                        <div class="info-box success">
+                            <strong>💡 Biomarker Candidates:</strong> <strong>KRAS</strong> is a well-known oncogene
+                            with emerging inhibitors (sotorasib, adagrasib). <strong>YAP1</strong> is a Hippo pathway
+                            effector with active drug discovery. <strong>LRP6</strong> represents Wnt signaling—an
+                            emerging therapeutic axis. Use <code>get_drugs_for_target</code> to explore druggability.
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+
+
+            <!-- Learn More -->
+            <section class="section">
+                <h2>Learn More</h2>
+
+                <div class="info-box">
+                    <h3>Resources</h3>
+                    <ul>
+                        <li><strong>MCP Specification:</strong> <a href="https://spec.modelcontextprotocol.io/"
+                                target="_blank">spec.modelcontextprotocol.io</a></li>
+                        <li><strong>INDRA CoGEx:</strong> <a href="https://github.com/indralab/indra_cogex"
+                                target="_blank">github.com/indralab/indra_cogex</a></li>
+                        <li><strong>Server Source:</strong> <a href="https://github.com/gyorilab/indra_agent"
+                                target="_blank">github.com/gyorilab/indra_agent</a></li>
+                        <li><strong>INDRA Documentation:</strong> <a href="https://indra.readthedocs.io/"
+                                target="_blank">indra.readthedocs.io</a></li>
+                    </ul>
+                </div>
+            </section>
+
+        </div>
+
+        <!-- Footer -->
+        <div class="footer">
+            <p><strong>INDRA CoGEx MCP Server</strong> | Model Context Protocol</p>
+            <p style="margin-top: 10px; font-size: 0.9em;">
+                Developed by <a href="https://github.com/gyorilab" target="_blank">Gyori Lab</a> |
+                <a href="https://github.com/gyorilab/indra_agent/issues" target="_blank">Report Issues</a>
+            </p>
+        </div>
+    </div>
+
+    <script>
+        // Initialize Mermaid
+        mermaid.initialize({
+            startOnLoad: true,
+            theme: 'default',
+            themeVariables: {
+                fontSize: '14px'
+            }
         });
-    }
-</script>
+
+        // Tab switching
+        function switchTab(evt, tabName) {
+            // Hide all tab contents
+            const tabContents = document.getElementsByClassName('tab-content');
+            for (let content of tabContents) {
+                content.classList.remove('active');
+            }
+
+            // Remove active class from all tabs
+            const tabs = document.getElementsByClassName('tab');
+            for (let tab of tabs) {
+                tab.classList.remove('active');
+            }
+
+            // Show selected tab and mark as active
+            document.getElementById(tabName).classList.add('active');
+            evt.currentTarget.classList.add('active');
+        }
+
+        // Collapsible sections
+        function toggleCollapsible(element) {
+            element.classList.toggle('open');
+            const content = element.nextElementSibling;
+            content.classList.toggle('open');
+        }
+
+        // Copy code to clipboard
+        function copyCode(button, codeId) {
+            const code = document.getElementById(codeId).textContent;
+            navigator.clipboard.writeText(code).then(() => {
+                const originalText = button.textContent;
+                button.textContent = 'Copied!';
+                setTimeout(() => {
+                    button.textContent = originalText;
+                }, 2000);
+            });
+        }
+    </script>
 
 </body>
+
 </html>
