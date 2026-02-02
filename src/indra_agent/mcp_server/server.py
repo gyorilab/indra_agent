@@ -14,11 +14,17 @@ Architecture:
 import asyncio
 import json
 import logging
+import os
 import threading
 from typing import Any, Dict, List, Optional
 
 from mcp.server.fastmcp import FastMCP
+from mcp.server.transport_security import TransportSecuritySettings
 from pydantic import BaseModel, Field, ConfigDict
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.requests import Request
+from starlette.responses import JSONResponse
+from starlette.templating import Jinja2Templates
 
 from indra_cogex.client.neo4j_client import Neo4jClient
 from indra.config import get_config
@@ -29,8 +35,35 @@ from indra_agent.mcp_server.validation import validate_cypher
 
 logger = logging.getLogger(__name__)
 
-# Initialize MCP server
-mcp = FastMCP("indra_cogex")
+# Read allowed hosts and origins from environment variables
+_allowed_hosts_env = get_config("MCP_ALLOWED_HOSTS", failure_ok=False)
+_allowed_origins_env = get_config("MCP_ALLOWED_ORIGINS", failure_ok=False)
+
+# Parse comma-separated values into lists
+_allowed_hosts = [h.strip() for h in _allowed_hosts_env.split(",") if h.strip()]
+_allowed_origins = [o.strip() for o in _allowed_origins_env.split(",") if o.strip()]
+
+# Parse stateless mode from environment (default: True for production)
+_stateless = os.getenv("MCP_STATELESS", "true").lower() in ("true", "t", "1", "yes", "on")
+
+# Parse JSON response mode from environment (default: True)
+_json_response = os.getenv("MCP_JSON_RESPONSE", "true").lower() in ("true", "t", "1", "yes", "on")
+
+# Initialize MCP server with stateless mode for horizontal scaling
+mcp = FastMCP(
+    "indra_cogex",
+    stateless_http=_stateless,
+    transport_security=TransportSecuritySettings(
+        enable_dns_rebinding_protection=True,
+        allowed_hosts=_allowed_hosts,
+        allowed_origins=_allowed_origins,
+    )
+)
+
+# Initialize Jinja2 templates
+templates = Jinja2Templates(
+    directory=os.path.join(os.path.dirname(__file__), "templates")
+)
 
 # Neo4j client singleton
 _neo4j_client = None
@@ -48,6 +81,57 @@ def get_client() -> Neo4jClient:
             )
             logger.info(f"Initialized Neo4j client: {get_config('INDRA_NEO4J_URL')}")
         return _neo4j_client
+
+
+# ============================================================================
+# Custom Routes
+# ============================================================================
+
+@mcp.custom_route("/", methods=["GET"])
+async def landing_page(request):
+    """Serve HTML landing page at root path."""
+    return templates.TemplateResponse(
+        "landing_page.html",
+        {"request": request, "server_name": mcp.name}
+    )
+
+
+@mcp.custom_route("/mcp", methods=["GET"])
+async def mcp_landing_page(request):
+    """Handle GET requests to /mcp endpoint.
+
+    When deployed behind CloudFront at mydomain.com/mcp, this handler:
+    - Serves HTML landing page for browser GET requests (Accept: text/html)
+    - Returns JSON info/health response for API client GET requests
+    - POST requests to /mcp are handled by FastMCP's MCP protocol endpoint
+    """
+    accept_header = request.headers.get("accept", "").lower()
+    is_browser_request = "text/html" in accept_header or not accept_header
+
+    if is_browser_request:
+        # Serve landing page for browser GET requests
+        return templates.TemplateResponse(
+            "landing_page.html",
+            {"request": request, "server_name": mcp.name}
+        )
+    else:
+        # For API clients, health checks, or other non-browser GET requests
+        # Return a helpful JSON response
+        return JSONResponse({
+            "service": "indra_cogex",
+            "status": "healthy",
+            "endpoint": "/mcp",
+            "protocol": "MCP (Model Context Protocol)",
+            "transport": "HTTP POST",
+            "message": "This endpoint accepts MCP protocol messages via POST requests. "
+                      "For HTML documentation, send a GET request with Accept: text/html header."
+        })
+
+
+@mcp.custom_route("/health", methods=["GET"])
+async def health_check(request):
+    """Health check endpoint for monitoring."""
+    return JSONResponse({"status": "healthy", "service": "indra_cogex"})
 
 
 # ============================================================================
@@ -307,9 +391,67 @@ def _register_gateway_tools():
 _register_gateway_tools()
 
 
-def main():
-    """Entry point for the MCP server."""
-    mcp.run()
+# ============================================================================
+# ASGI App for Gunicorn/Uvicorn
+# ============================================================================
+# Note: This is an ASGI application. When using gunicorn, you must use
+# the uvicorn worker class:
+#   gunicorn indra_agent.mcp_server.server:app --worker-class uvicorn.workers.UvicornWorker
+#
+# Or use uvicorn directly:
+#   uvicorn indra_agent.mcp_server.server:app --host 0.0.0.0 --port 8000
+# ============================================================================
+
+# Configure JSON response mode
+mcp.settings.json_response = _json_response
+
+# Create base ASGI app using FastMCP's built-in streamable_http_app() method
+# This is the recommended approach per FastMCP documentation
+_base_app = mcp.streamable_http_app()
 
 
-__all__ = ['mcp', 'get_client', 'main']
+# ============================================================================
+# Middleware to handle GET requests to /mcp endpoint
+# ============================================================================
+
+class MCPLandingPageMiddleware(BaseHTTPMiddleware):
+    """Middleware to intercept GET requests to /mcp and serve landing page.
+
+    This ensures GET requests to /mcp are handled before FastMCP's route,
+    allowing us to serve the landing page for browsers while letting POST
+    requests pass through to FastMCP's MCP protocol handler.
+    """
+
+    async def dispatch(self, request: Request, call_next):
+        # Intercept GET requests to /mcp
+        if request.method == "GET" and request.url.path == "/mcp":
+            accept_header = request.headers.get("accept", "").lower()
+            is_browser_request = "text/html" in accept_header or not accept_header
+
+            if is_browser_request:
+                # Serve landing page for browser GET requests
+                return templates.TemplateResponse(
+                    "landing_page.html",
+                    {"request": request, "server_name": mcp.name}
+                )
+            else:
+                # For API clients, health checks, or other non-browser GET requests
+                # Return a helpful JSON response
+                return JSONResponse({
+                    "service": "indra_cogex",
+                    "status": "healthy",
+                    "endpoint": "/mcp",
+                    "protocol": "MCP (Model Context Protocol)",
+                    "transport": "HTTP POST",
+                    "message": "This endpoint accepts MCP protocol messages via POST requests. "
+                              "For HTML documentation, send a GET request with Accept: text/html header."
+                })
+
+        # For all other requests, pass through to the underlying app
+        return await call_next(request)
+
+
+# Wrap the base app with middleware to handle /mcp GET requests
+app = MCPLandingPageMiddleware(_base_app)
+
+__all__ = ['mcp', 'get_client', 'app']
