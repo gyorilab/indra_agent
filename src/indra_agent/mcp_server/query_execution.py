@@ -13,7 +13,6 @@ Integration points:
 - Integrates with validation.py for query safety checks
 """
 
-import hashlib
 import json
 import logging
 import time
@@ -27,6 +26,7 @@ from indra_cogex.client.neo4j_client import Neo4jClient
 from indra_cogex.representation import norm_id
 from indra_agent.mcp_server.validation import validate_cypher
 from indra_agent.mcp_server.pagination import paginate_response
+from indra_agent.mcp_server.cache import cache as _cache, make_key, DEFAULT_TTL
 
 logger = logging.getLogger(__name__)
 
@@ -169,40 +169,67 @@ def execute_cypher(
                 f"Query validation failed: {validation_result['issues']}"
             )
 
-    start_time = time.time()
+    query_hash = make_key("cypher", query.strip().lower(), parameters, max_results)
+
+    # Check cache first (same query + params = cache hit, skip re-execution)
     try:
-        column_names, results = client.query_tx_with_keys(query, **parameters)
-        execution_time_ms = (time.time() - start_time) * 1000
+        cached_results = _cache.get(query_hash)
+    except Exception:
+        logger.debug("Cache read failed for %s, treating as miss", query_hash)
+        cached_results = None
+    from_cache = cached_results is not None
 
-        if execution_time_ms > timeout_ms:
+    if from_cache:
+        logger.debug(f"Cypher cache hit for hash={query_hash}")
+        serialized_results = cached_results
+        execution_time_ms = 0.0
+        truncated = False
+    else:
+        start_time = time.time()
+        try:
+            column_names, results = client.query_tx_with_keys(query, **parameters)
+            execution_time_ms = (time.time() - start_time) * 1000
+
+            if execution_time_ms > timeout_ms:
+                logger.warning(
+                    f"Query exceeded timeout threshold: {execution_time_ms}ms > {timeout_ms}ms"
+                )
+        except neo4j_exceptions.CypherSyntaxError as e:
+            logger.error(f"Cypher syntax error: {e}")
+            raise QuerySyntaxError(f"Cypher syntax error: {str(e)}")
+        except neo4j_exceptions.ServiceUnavailable as e:
+            logger.error(f"Neo4j service unavailable: {e}")
+            raise QueryExecutionError(f"Database unavailable: {str(e)}")
+        except Exception as e:
+            execution_time_ms = (time.time() - start_time) * 1000
+            error_str = str(e).lower()
+            if "timeout" in error_str or "timed out" in error_str or execution_time_ms > timeout_ms:
+                logger.error(f"Query timeout after {execution_time_ms:.0f}ms: {e}")
+                raise QueryTimeoutError(
+                    f"Query exceeded timeout ({timeout_ms}ms). "
+                    "Try simplifying query or adding LIMIT clause."
+                )
+            logger.error(f"Query execution error: {e}", exc_info=True)
+            raise QueryExecutionError(f"Query execution failed: {str(e)}")
+
+        truncated = len(results) > max_results
+        if truncated:
+            logger.info(f"Results truncated: {len(results)} total, returning {max_results}")
+        limited_results = results[:max_results] if results else []
+
+        serialized_results = _serialize_results(limited_results, column_names)
+
+        # Cache for subsequent paginated access
+        try:
+            _cache.set(query_hash, serialized_results, expire=DEFAULT_TTL, tag="cypher")
+        except Exception:
+            logger.debug("Cache write failed for %s", query_hash)
+
+        if execution_time_ms > 1000:
             logger.warning(
-                f"Query exceeded timeout threshold: {execution_time_ms}ms > {timeout_ms}ms"
+                f"Slow query ({execution_time_ms}ms): {query[:100]}... "
+                f"[{len(results)} results]"
             )
-    except neo4j_exceptions.CypherSyntaxError as e:
-        logger.error(f"Cypher syntax error: {e}")
-        raise QuerySyntaxError(f"Cypher syntax error: {str(e)}")
-    except neo4j_exceptions.ServiceUnavailable as e:
-        logger.error(f"Neo4j service unavailable: {e}")
-        raise QueryExecutionError(f"Database unavailable: {str(e)}")
-    except Exception as e:
-        execution_time_ms = (time.time() - start_time) * 1000
-        error_str = str(e).lower()
-        if "timeout" in error_str or "timed out" in error_str or execution_time_ms > timeout_ms:
-            logger.error(f"Query timeout after {execution_time_ms:.0f}ms: {e}")
-            raise QueryTimeoutError(
-                f"Query exceeded timeout ({timeout_ms}ms). "
-                "Try simplifying query or adding LIMIT clause."
-            )
-        logger.error(f"Query execution error: {e}", exc_info=True)
-        raise QueryExecutionError(f"Query execution failed: {str(e)}")
-
-    truncated = len(results) > max_results
-    if truncated:
-        logger.info(f"Results truncated: {len(results)} total, returning {max_results}")
-    limited_results = results[:max_results] if results else []
-
-    serialized_results = _serialize_results(limited_results, column_names)
-    query_hash = _compute_query_hash(query, parameters)
 
     # Apply pagination with automatic token limiting
     paginated = paginate_response(
@@ -214,41 +241,31 @@ def execute_cypher(
     final_results = paginated["results"]
     pagination_info = paginated["pagination"]
 
-    # Adjust pagination totals to account for max_results truncation
     if truncated:
         pagination_info["db_truncated"] = True
         pagination_info["db_max_results"] = max_results
 
     result_dict = {
-        "query": query,
-        "parameters": parameters,
         "results": final_results,
         "metadata": {
             "result_count": pagination_info.get("returned", len(final_results)),
             "execution_time_ms": execution_time_ms,
             "truncated": truncated or pagination_info.get("truncated", False),
-            "original_count": len(results) if truncated else pagination_info.get("total", len(final_results)),
-            "from_cache": False,
-            "query_hash": query_hash,
-            "timestamp": datetime.now(UTC).isoformat()
+            "original_count": pagination_info.get("total", len(final_results)),
+            "from_cache": from_cache,
+            "query_hash": query_hash.split(":", 1)[1] if ":" in query_hash else query_hash,
         },
-        "pagination": pagination_info,
-        "from_cache": False,
-        "token_estimate": pagination_info.get("token_estimate", _estimate_result_tokens(final_results))
     }
 
-    # Add continuation hint if there's more data
+    # Only include pagination when there's more data
     if pagination_info.get("has_more"):
+        result_dict["pagination"] = pagination_info
         result_dict["continuation_hint"] = (
             f"Showing {pagination_info['returned']} of {pagination_info['total']} results. "
             f"Call with offset={pagination_info['next_offset']} to continue."
         )
-
-    if execution_time_ms > 1000:
-        logger.warning(
-            f"Slow query ({execution_time_ms}ms): {query[:100]}... "
-            f"[{len(results)} results]"
-        )
+    else:
+        result_dict["total"] = pagination_info.get("total", len(final_results))
 
     return result_dict
 
@@ -312,14 +329,6 @@ def explain_query(
 # ============================================================================
 # Helper Functions
 # ============================================================================
-
-
-def _compute_query_hash(query: str, parameters: Dict[str, Any]) -> str:
-    """Compute stable hash for query + parameters for caching."""
-    normalized = query.strip().lower()
-    param_str = json.dumps(parameters, sort_keys=True)
-    combined = f"{normalized}:{param_str}"
-    return hashlib.sha256(combined.encode()).hexdigest()[:16]
 
 
 def _serialize_results(
