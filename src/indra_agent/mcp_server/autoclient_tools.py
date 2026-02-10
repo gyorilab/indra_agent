@@ -16,17 +16,42 @@ import json
 import logging
 from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 
+from indra_agent.mcp_server.cache import cache as _cache, make_key, DEFAULT_TTL
+
+
+def compact_json(obj: Any) -> str:
+    """Serialize to compact JSON for token efficiency."""
+    return json.dumps(obj, separators=(',', ':'), default=str)
+
+
 from indra_agent.mcp_server.mappings import (
     CURIE_PREFIX_TO_ENTITY,
     PARAM_NAMESPACE_FILTERS,
     MIN_CONFIDENCE_THRESHOLD,
     AMBIGUITY_SCORE_THRESHOLD,
+    ORGANISM_TO_TAXONOMY_ID,
 )
 from indra_agent.mcp_server.registry import _get_registry, clear_registry_cache
 from indra_agent.mcp_server.serialization import process_result, resolve_entity_names
 from indra_agent.mcp_server.pagination import paginate_response, estimate_tokens
 
 logger = logging.getLogger(__name__)
+
+# Request coalescing: prevent duplicate Neo4j queries for identical concurrent requests.
+# Maps cache key → asyncio.Future so concurrent callers await a single execution.
+_inflight: Dict[str, asyncio.Future] = {}
+
+# Map single-entity functions → native batch variants.
+# These use WHERE IN (single Neo4j query) instead of fan-out.
+# Values: (batch_function_name, batch_param_name)
+# Explicit param names avoid naive pluralization ("target"→"targets" is safe,
+# but e.g. "analysis"→"analysiss" would break).
+BATCH_FUNCTION_MAP: Dict[str, Tuple[str, str]] = {
+    "get_drugs_for_target": ("get_drugs_for_targets", "targets"),
+    "get_targets_for_drug": ("get_targets_for_drugs", "drugs"),
+    # get_shared_pathways_for_genes has different semantics (intersection, not union)
+    # so we do NOT map get_pathways_for_gene → get_shared_pathways_for_genes
+}
 
 
 def _detect_entity_types(entity_ids: List[str]) -> Set[str]:
@@ -39,6 +64,45 @@ def _detect_entity_types(entity_ids: List[str]) -> Set[str]:
                 detected.add(entity_type)
                 break
     return detected
+
+
+def _normalize_organism(organism: Optional[str]) -> Optional[str]:
+    """Normalize organism name to NCBI taxonomy ID for gilda.
+
+    Resolution layers:
+    1. Passthrough if already a numeric taxonomy ID (e.g., "9606")
+    2. Local lookup from gilda's organism_labels + common English names
+    3. NCBI Entrez Taxonomy API fallback for arbitrary names
+
+    Gilda expects taxonomy IDs like '9606', not names like 'human'.
+    Passing unrecognized names silently drops all organism-specific results.
+    """
+    if organism is None:
+        return None
+    stripped = organism.strip()
+    # Already a taxonomy ID (e.g., "9606")
+    if stripped.isdigit():
+        return stripped
+    # Layer 1+2: Local lookup (gilda canonical + common English names)
+    taxonomy_id = ORGANISM_TO_TAXONOMY_ID.get(stripped.lower())
+    if taxonomy_id:
+        return taxonomy_id
+    # Layer 3: NCBI Entrez Taxonomy API fallback
+    try:
+        from indra.databases.taxonomy_client import get_taxonomy_id
+        taxonomy_id = get_taxonomy_id(stripped)
+        if taxonomy_id:
+            logger.info("Resolved organism '%s' → %s via NCBI Entrez", stripped, taxonomy_id)
+            return taxonomy_id
+    except Exception as e:
+        logger.debug("NCBI taxonomy lookup failed for '%s': %s", stripped, e)
+    logger.warning(
+        "Unknown organism '%s' — not a recognized name or taxonomy ID. "
+        "Passing None to gilda (defaults to human/9606). "
+        "Valid examples: 'human', '9606', 'mouse', '10090'",
+        organism,
+    )
+    return None
 
 
 def _lookup_xrefs(
@@ -171,21 +235,10 @@ def suggest_endpoints(
                 scored.sort(reverse=True)
                 relevant_funcs = [f for _, f in scored]
 
-            # Include parameter info for each function so agent knows exact param names
-            func_details = []
-            for fn in relevant_funcs[:3]:
-                if fn in registry:
-                    params = registry[fn].parameters
-                    # Extract just param names and types for token efficiency
-                    param_info = {k: v.get("type", "unknown") for k, v in params.items()}
-                    func_details.append({"name": fn, "params": param_info})
-                else:
-                    func_details.append({"name": fn})
-
+            # Return just function names — params are inferrable from name pattern
             source_nav["can_reach"].append({
                 "target": target_type,
-                "functions": func_details,
-                "total_functions": len(functions),
+                "functions": list(relevant_funcs[:3]),
             })
 
         if source_nav["can_reach"]:
@@ -209,6 +262,10 @@ async def call_endpoint(
     disclosure_level: Optional[str] = None,
     offset: int = 0,
     limit: Optional[int] = None,
+    include_navigation: bool = False,
+    fields: Optional[List[str]] = None,
+    estimate: bool = False,
+    sort_by: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Call an autoclient endpoint with optional auto-grounding and enrichment.
 
@@ -239,6 +296,11 @@ async def call_endpoint(
     limit : int, optional
         Maximum items to return per page. If response exceeds ~20k tokens,
         it will be automatically truncated with has_more=True.
+    sort_by : str, optional
+        Sort results before pagination. Options:
+        - "evidence": Descending by source_counts sum (most-validated first)
+        - "name": Alphabetical by entity name
+        Default: None (preserve query order).
 
     Returns
     -------
@@ -279,9 +341,10 @@ async def call_endpoint(
 
             # Check if parameter expects Tuple[str, str] (CURIE)
             if get_origin(param_type) is tuple and get_args(param_type) == (str, str):
-                # Case 1: Already a list/tuple CURIE - normalize namespace case
+                # Case 1: Already a list/tuple CURIE — pass through as-is
+                # Upstream norm_id() handles namespace normalization internally
                 if isinstance(param_value, (list, tuple)) and len(param_value) == 2:
-                    parsed_kwargs[param_name] = [param_value[0].lower(), param_value[1]]
+                    parsed_kwargs[param_name] = list(param_value)
                     continue
 
                 # Case 2: String - try auto-grounding if enabled
@@ -290,7 +353,7 @@ async def call_endpoint(
                     # Ground with parameter semantics filtering
                     # param_name (disease, gene, drug) filters to appropriate namespaces
                     grounding = await ground_entity(
-                        param_value,
+                        term=param_value,
                         limit=10,
                         param_name=param_name,  # Semantic filtering!
                     )
@@ -339,8 +402,10 @@ async def call_endpoint(
                                 }
 
                     # Apply grounding - unambiguous match!
-                    # IMPORTANT: Normalize namespace to lowercase for autoclient functions
-                    parsed_kwargs[param_name] = [top["namespace"].lower(), top["identifier"]]
+                    # Uppercase namespace: upstream functions validate against
+                    # uppercase prefixes (e.g., mesh_term[0] != "MESH") before
+                    # calling norm_id(). Gilda returns lowercase, graph expects uppercase.
+                    parsed_kwargs[param_name] = [top["namespace"].upper(), top["identifier"]]
                     grounding_info[param_name] = {
                         "input": param_value,
                         "grounded_to": top,
@@ -348,76 +413,228 @@ async def call_endpoint(
                         "param_filter": param_name,
                     }
 
+            # Check if parameter expects List[Tuple[str, str]] (list of CURIEs)
+            # e.g., get_shared_pathways_for_genes(genes: List[Tuple[str, str]])
+            elif (get_origin(param_type) is list
+                  and get_args(param_type)
+                  and get_origin(get_args(param_type)[0]) is tuple
+                  and get_args(get_args(param_type)[0]) == (str, str)):
+
+                if not isinstance(param_value, list):
+                    continue
+
+                # Separate pre-formed CURIEs from strings needing grounding
+                grounded_list = []
+                strings_to_ground = []
+                string_indices = []  # Track positions for reinsertion
+
+                for i, item in enumerate(param_value):
+                    if isinstance(item, (list, tuple)) and len(item) == 2:
+                        # Already a CURIE — uppercase namespace for upstream
+                        grounded_list.append((i, [str(item[0]).upper(), str(item[1])]))
+                    elif auto_ground and isinstance(item, str):
+                        strings_to_ground.append(item)
+                        string_indices.append(i)
+                    else:
+                        return {
+                            "error": f"Invalid item in {param_name}[{i}]: expected [namespace, id] or string",
+                            "parameter": param_name,
+                            "item": item,
+                            "hint": "Each item should be a CURIE [namespace, id] or a string to auto-ground",
+                        }
+
+                # Batch-ground all strings in one call
+                if strings_to_ground:
+                    # Infer entity type from param_name (e.g., "genes" → "gene")
+                    entity_filter = param_name.rstrip("s") if param_name.endswith("s") else param_name
+                    batch_result = await ground_entity(
+                        terms=strings_to_ground,
+                        param_name=entity_filter,
+                    )
+
+                    if "error" in batch_result:
+                        return {
+                            "error": f"Batch grounding failed for {param_name}: {batch_result['error']}",
+                            "parameter": param_name,
+                        }
+
+                    mappings = batch_result.get("mappings", {})
+                    failed_terms = batch_result.get("failed", [])
+
+                    if failed_terms:
+                        return {
+                            "error": f"Could not ground {len(failed_terms)} of {len(strings_to_ground)} terms for {param_name}",
+                            "parameter": param_name,
+                            "failed_terms": failed_terms,
+                            "hint": "Provide explicit CURIEs: [[namespace, id], ...]",
+                        }
+
+                    for idx, term in zip(string_indices, strings_to_ground):
+                        mapping = mappings.get(term)
+                        if not mapping:
+                            return {
+                                "error": f"No grounding found for '{term}' in {param_name}",
+                                "parameter": param_name,
+                                "hint": f"Provide explicit CURIE for '{term}': [namespace, id]",
+                            }
+                        ns, id_ = mapping["curie"].split(":", 1)
+                        grounded_list.append((idx, [ns.upper(), id_]))
+
+                    grounding_info[param_name] = {
+                        "input": strings_to_ground,
+                        "grounded_count": len(mappings),
+                        "method": "gilda_batch",
+                        "param_filter": entity_filter,
+                    }
+
+                # Sort by original index and extract just the CURIEs
+                grounded_list.sort(key=lambda x: x[0])
+                parsed_kwargs[param_name] = [curie for _, curie in grounded_list]
+
     except Exception as e:
         logger.warning(f"Auto-grounding failed: {e}")
         # Continue without auto-grounding
 
-    # Execute function with xref fallback
+    # Execute function with xref fallback (or serve from cache)
     try:
         client = get_client_func()
 
-        # Try original parameters first
-        result = await asyncio.to_thread(func, client=client, **parsed_kwargs)
-        processed = process_result(result)
+        # Check cache first (same endpoint + kwargs = cache hit)
+        result_id = make_key("endpoint", endpoint, parsed_kwargs)
+        try:
+            cached = await asyncio.to_thread(_cache.get, result_id)
+        except Exception:
+            logger.debug("Cache read failed for %s, treating as miss", result_id)
+            cached = None
 
-        # Resolve entity names from graph (batch query for all results)
-        if isinstance(processed, list) and processed:
-            processed = await asyncio.to_thread(resolve_entity_names, processed, client)
+        if cached is not None:
+            logger.debug(f"Cache hit for {endpoint} (result_id={result_id})")
+            processed = cached
+        elif result_id in _inflight:
+            # Another request is already executing this exact query — coalesce
+            logger.debug(f"Coalescing request for {endpoint} (result_id={result_id})")
+            processed = await _inflight[result_id]
+        else:
+            # Cache miss, no in-flight request — we execute
+            loop = asyncio.get_running_loop()
+            future = loop.create_future()
+            _inflight[result_id] = future
+            try:
+                # Cache miss — execute query
+                result = await asyncio.to_thread(func, client=client, **parsed_kwargs)
+                processed = process_result(result)
 
-        # CROSS-REFERENCE FALLBACK: If no results and we auto-grounded, try xrefs
-        if (isinstance(processed, list) and len(processed) == 0 and grounding_info):
-            logger.info(f"No results with original grounding, trying xrefs...")
+                # Resolve entity names from graph (batch query for all results)
+                if isinstance(processed, list) and processed:
+                    processed = await asyncio.to_thread(resolve_entity_names, processed, client)
 
-            # Try each auto-grounded parameter with its xrefs
-            for param_name, ground_info in grounding_info.items():
-                if param_name not in parsed_kwargs:
-                    continue
+                # CROSS-REFERENCE FALLBACK: If no results and we auto-grounded, try xrefs
+                if (isinstance(processed, list) and len(processed) == 0 and grounding_info):
+                    logger.info(f"No results with original grounding, trying xrefs...")
 
-                original_curie = parsed_kwargs[param_name]
-                namespace, identifier = original_curie[0], original_curie[1]
+                    for param_name, ground_info in grounding_info.items():
+                        if param_name not in parsed_kwargs:
+                            continue
 
-                # Look up cross-references
-                equivalents = _lookup_xrefs(namespace, identifier, client, param_name)
+                        original_curie = parsed_kwargs[param_name]
+                        namespace, identifier = original_curie[0], original_curie[1]
 
-                if len(equivalents) > 1:  # More than just the original
-                    logger.info(f"Trying {len(equivalents)-1} xrefs for {param_name}")
-                    ground_info["xrefs_tried"] = []
+                        equivalents = _lookup_xrefs(namespace, identifier, client, param_name)
 
-                    # Try each equivalent identifier
-                    for equiv_ns, equiv_id in equivalents[1:]:  # Skip the first (original)
-                        test_kwargs = parsed_kwargs.copy()
-                        test_kwargs[param_name] = [equiv_ns, equiv_id]
+                        if len(equivalents) > 1:
+                            logger.info(f"Trying {len(equivalents)-1} xrefs for {param_name}")
+                            ground_info["xrefs_tried"] = []
 
-                        try:
-                            xref_result = await asyncio.to_thread(func, client=client, **test_kwargs)
-                            xref_processed = process_result(xref_result)
+                            for equiv_ns, equiv_id in equivalents[1:]:
+                                test_kwargs = parsed_kwargs.copy()
+                                test_kwargs[param_name] = [equiv_ns, equiv_id]
 
-                            ground_info["xrefs_tried"].append({
-                                "namespace": equiv_ns,
-                                "identifier": equiv_id,
-                                "result_count": len(xref_processed) if isinstance(xref_processed, list) else 1
-                            })
+                                try:
+                                    xref_result = await asyncio.to_thread(func, client=client, **test_kwargs)
+                                    xref_processed = process_result(xref_result)
 
-                            if isinstance(xref_processed, list) and len(xref_processed) > 0:
-                                # Found results with this xref! Resolve names.
-                                logger.info(f"Found {len(xref_processed)} results using xref {equiv_ns}:{equiv_id}")
-                                xref_processed = await asyncio.to_thread(resolve_entity_names, xref_processed, client)
-                                processed = xref_processed
-                                parsed_kwargs[param_name] = [equiv_ns, equiv_id]
-                                ground_info["xref_used"] = {
-                                    "namespace": equiv_ns,
-                                    "identifier": equiv_id,
-                                    "original_namespace": namespace,
-                                    "original_identifier": identifier,
-                                }
-                                break
-                        except Exception as e:
-                            logger.debug(f"xref {equiv_ns}:{equiv_id} failed: {e}")
-                            ground_info["xrefs_tried"].append({
-                                "namespace": equiv_ns,
-                                "identifier": equiv_id,
-                                "error": str(e)
-                            })
+                                    ground_info["xrefs_tried"].append({
+                                        "namespace": equiv_ns,
+                                        "identifier": equiv_id,
+                                        "result_count": len(xref_processed) if isinstance(xref_processed, list) else 1
+                                    })
+
+                                    if isinstance(xref_processed, list) and len(xref_processed) > 0:
+                                        logger.info(f"Found {len(xref_processed)} results using xref {equiv_ns}:{equiv_id}")
+                                        xref_processed = await asyncio.to_thread(resolve_entity_names, xref_processed, client)
+                                        processed = xref_processed
+                                        parsed_kwargs[param_name] = [equiv_ns, equiv_id]
+                                        ground_info["xref_used"] = {
+                                            "namespace": equiv_ns,
+                                            "identifier": equiv_id,
+                                            "original_namespace": namespace,
+                                            "original_identifier": identifier,
+                                        }
+                                        break
+                                except Exception as e:
+                                    logger.debug(f"xref {equiv_ns}:{equiv_id} failed: {e}")
+                                    ground_info["xrefs_tried"].append({
+                                        "namespace": equiv_ns,
+                                        "identifier": equiv_id,
+                                        "error": str(e)
+                                    })
+
+                # Cache results for subsequent paginated/projected access
+                if isinstance(processed, list):
+                    try:
+                        await asyncio.to_thread(lambda: _cache.set(result_id, processed, expire=DEFAULT_TTL, tag="endpoint"))
+                    except Exception:
+                        logger.debug("Cache write failed for %s", result_id)
+
+                # Resolve the future so coalesced waiters get the result
+                future.set_result(processed)
+            except Exception as exc:
+                # Propagate exception to coalesced waiters
+                future.set_exception(exc)
+                raise
+            finally:
+                # Always clean up to prevent memory leaks
+                _inflight.pop(result_id, None)
+
+        # Estimate mode: return metadata only, results stay server-side
+        if estimate and isinstance(processed, list):
+            fields_available = set()
+            for item in processed[:10]:
+                if isinstance(item, dict):
+                    fields_available.update(item.keys())
+
+            return {
+                "result_id": result_id,
+                "result_count": len(processed),
+                "token_estimate_full": estimate_tokens(processed),
+                "fields_available": sorted(fields_available),
+                "sample": processed[:3],
+            }
+
+        # Sort results if requested (before field projection and pagination)
+        if sort_by and isinstance(processed, list):
+            if sort_by == "evidence":
+                def _evidence_key(item):
+                    if isinstance(item, dict):
+                        sc = item.get("source_counts", {})
+                        if isinstance(sc, dict):
+                            return sum(sc.values())
+                        return item.get("evidence_count", 0)
+                    return 0
+                processed.sort(key=_evidence_key, reverse=True)
+            elif sort_by == "name":
+                processed.sort(key=lambda x: (x.get("name", "") or "").lower() if isinstance(x, dict) else "")
+            else:
+                logger.warning("Unknown sort_by value '%s', ignoring (valid: 'evidence', 'name')", sort_by)
+
+        # Apply field projection if requested (before enrichment, after name resolution)
+        if fields and isinstance(processed, list):
+            field_set = set(fields)
+            processed = [
+                {k: v for k, v in item.items() if k in field_set}
+                for item in processed
+                if isinstance(item, dict)
+            ]
 
         # Optionally apply enrichment if disclosure_level specified
         enrichment_info = None
@@ -442,10 +659,9 @@ async def call_endpoint(
             except Exception as e:
                 logger.warning(f"Enrichment failed: {e}")
 
-        # Generate suggested_next from result entity types
-        # This embeds navigation guidance directly in the response
+        # Generate suggested_next from result entity types (opt-in only)
         suggested_next = None
-        if isinstance(processed, list) and processed:
+        if include_navigation and isinstance(processed, list) and processed:
             # Extract entity IDs from results for navigation suggestions
             result_ids = []
             for item in processed[:10]:  # Sample first 10 for efficiency
@@ -488,30 +704,25 @@ async def call_endpoint(
                 "token_estimate": estimate_tokens(processed),
             }
 
+        # Build slim response — don't echo endpoint/parameters (agent already knows)
         response = {
-            "endpoint": endpoint,
-            "parameters": parsed_kwargs,
             "results": final_results,
-            "result_count": pagination_info.get("returned", len(final_results) if isinstance(final_results, list) else 1),
-            "pagination": pagination_info,
         }
 
-        # Add continuation hint if there's more data
+        # Collapse pagination when trivial (single page)
         if pagination_info.get("has_more"):
-            returned = pagination_info.get("returned", 0)
-            total = pagination_info.get("total", "unknown")
-            next_offset = pagination_info.get("next_offset", 0)
-            response["continuation_hint"] = (
-                f"Showing {returned} of {total} results. "
-                f"To get more, call {endpoint} with offset={next_offset}"
-            )
+            response["pagination"] = pagination_info
+        else:
+            response["total"] = pagination_info.get("total", len(final_results) if isinstance(final_results, list) else 1)
 
-        # Add suggested_next if we have navigation options
         if suggested_next:
             response["suggested_next"] = suggested_next
 
+        # Only report grounding when xref fallback was used (unexpected resolution)
         if grounding_info:
-            response["grounding_applied"] = grounding_info
+            xref_fallbacks = {k: v for k, v in grounding_info.items() if v.get("xref_used")}
+            if xref_fallbacks:
+                response["xref_fallback"] = xref_fallbacks
 
         if enrichment_info:
             response["enrichment"] = enrichment_info
@@ -527,24 +738,287 @@ async def call_endpoint(
         }
 
 
+async def batch_call(
+    endpoint: str,
+    entity_param: str,
+    entity_values: List[str],
+    common_kwargs: str = "{}",
+    get_client_func: Callable = None,
+    auto_ground: bool = True,
+    fields: Optional[List[str]] = None,
+    max_concurrent: int = 10,
+    merge_strategy: str = "keyed",
+) -> Dict[str, Any]:
+    """Execute an endpoint for multiple entities in parallel.
+
+    Replaces N serial MCP round-trips with 1. Internally fans out
+    via asyncio.gather with bounded concurrency, or routes to native
+    batch variants where available (single Neo4j WHERE IN query).
+
+    Parameters
+    ----------
+    endpoint : str
+        Function name (e.g., "get_diseases_for_gene")
+    entity_param : str
+        Which parameter to batch over (e.g., "gene")
+    entity_values : list of str
+        Entity values to query (e.g., ["SIRT3", "PRKN", "MAPT"])
+    common_kwargs : str
+        JSON string of additional shared parameters (default: "{}")
+    get_client_func : Callable
+        Function to get Neo4j client
+    auto_ground : bool
+        Auto-ground entity strings to CURIEs (default: True)
+    fields : list of str, optional
+        Project results to only these keys per item
+    max_concurrent : int
+        Max parallel queries (default: 10, prevents Neo4j overload)
+    merge_strategy : str
+        "keyed" (default): {entity: results} dict.
+        "flat": All results concatenated into one list.
+
+    Returns
+    -------
+    :
+        Dict with results, total_entities, successful, total_results,
+        and optionally failed dict for partial failures.
+    """
+    if not entity_values:
+        return {"error": "entity_values must be a non-empty list"}
+
+    # Parse common kwargs once
+    parsed_common = json.loads(common_kwargs) if isinstance(common_kwargs, str) else common_kwargs
+
+    # Check for native batch route
+    registry, func_mapping, _ = _get_registry()
+    batch_info = BATCH_FUNCTION_MAP.get(endpoint)
+
+    if batch_info:
+        native_batch, batch_param_name = batch_info
+        if native_batch in func_mapping:
+            # NATIVE BATCH PATH: single Neo4j WHERE IN query
+            return await _batch_call_native(
+                native_batch, batch_param_name, entity_param, entity_values,
+                parsed_common, get_client_func, auto_ground, fields,
+            )
+
+    # FAN-OUT PATH: N parallel call_endpoint invocations
+    semaphore = asyncio.Semaphore(max_concurrent)
+
+    async def _call_one(entity_value: str) -> Tuple[str, Dict]:
+        async with semaphore:
+            kwargs = {entity_param: entity_value, **parsed_common}
+            result = await call_endpoint(
+                endpoint=endpoint,
+                kwargs=json.dumps(kwargs),
+                get_client_func=get_client_func,
+                auto_ground=auto_ground,
+                fields=fields,
+            )
+            return entity_value, result
+
+    pairs = await asyncio.gather(
+        *[_call_one(v) for v in entity_values],
+        return_exceptions=True,
+    )
+
+    # Merge results
+    results: Dict[str, Any] = {}
+    failed: Dict[str, Any] = {}
+    total_results = 0
+
+    for i, pair in enumerate(pairs):
+        if isinstance(pair, Exception):
+            entity_val = entity_values[i] if i < len(entity_values) else f"_exception_{i}"
+            failed[entity_val] = {"error": str(pair)}
+            continue
+        entity_value, result = pair
+        if "error" in result:
+            failed[entity_value] = {"error": result["error"]}
+        else:
+            items = result.get("results", result)
+            if merge_strategy == "keyed":
+                results[entity_value] = items
+                total_results += len(items) if isinstance(items, list) else 1
+            else:
+                # Flat: extend list
+                if isinstance(items, list):
+                    results.setdefault("_flat", []).extend(items)
+                    total_results += len(items)
+                else:
+                    results.setdefault("_flat", []).append(items)
+                    total_results += 1
+
+    response: Dict[str, Any] = {
+        "results": results.get("_flat", []) if merge_strategy == "flat" else results,
+        "total_entities": len(entity_values),
+        "successful": len(entity_values) - len(failed),
+        "total_results": total_results,
+    }
+    if failed:
+        response["failed"] = failed
+
+    return response
+
+
+async def _batch_call_native(
+    batch_endpoint: str,
+    batch_param_name: str,
+    entity_param: str,
+    entity_values: List[str],
+    common_kwargs: Dict,
+    get_client_func: Callable,
+    auto_ground: bool,
+    fields: Optional[List[str]],
+) -> Dict[str, Any]:
+    """Route to native batch variant (single WHERE IN query).
+
+    Native batch functions like get_drugs_for_targets accept
+    List[Tuple[str,str]] instead of Tuple[str,str]. We ground all
+    entities, then call the batch function once.
+
+    Parameters
+    ----------
+    batch_endpoint : str
+        Native batch function name (e.g., "get_drugs_for_targets")
+    batch_param_name : str
+        Parameter name for the batch function (e.g., "targets")
+    entity_param : str
+        Original single-entity parameter name (e.g., "target")
+    entity_values : list of str
+        Entity values to ground and batch
+    common_kwargs : dict
+        Additional shared parameters
+    get_client_func : Callable
+        Function to get Neo4j client
+    auto_ground : bool
+        Whether to auto-ground entity strings to CURIEs
+    fields : list of str, optional
+        Project results to only these keys per item
+
+    Returns
+    -------
+    :
+        Dict with results, total_entities, successful, total_results,
+        batch_mode="native", and optionally failed dict.
+    """
+    grounded_entities: List[Tuple[str, List[str]]] = []
+    failed: Dict[str, Any] = {}
+
+    if auto_ground:
+        grounding_result = await ground_entity(
+            terms=entity_values,
+            param_name=entity_param,
+        )
+        for entity_value in entity_values:
+            mapping = grounding_result.get("mappings", {}).get(entity_value)
+            if mapping:
+                curie = mapping["curie"]
+                ns, id_ = curie.split(":", 1)
+                # Uppercase namespace: upstream batch functions may validate
+                # against uppercase prefixes before calling norm_id()
+                grounded_entities.append((entity_value, [ns.upper(), id_]))
+            else:
+                # Propagate specific error from grounding result
+                fail_info = grounding_result.get("failed", {}).get(entity_value)
+                if isinstance(fail_info, dict):
+                    failed[entity_value] = fail_info
+                else:
+                    failed[entity_value] = {"error": f"Grounding failed for '{entity_value}'"}
+    else:
+        # Assume already CURIEs in "NS:ID" format
+        for entity_value in entity_values:
+            if ":" in entity_value:
+                ns, id_ = entity_value.split(":", 1)
+                grounded_entities.append((entity_value, [ns, id_]))
+            else:
+                failed[entity_value] = {"error": "Expected CURIE format NS:ID"}
+
+    if not grounded_entities:
+        return {"error": "All entities failed grounding", "failed": failed}
+
+    # Build batch parameter: List[Tuple[str,str]]
+    batch_kwargs = {
+        batch_param_name: [tuple(curie) for _, curie in grounded_entities],
+        **common_kwargs,
+    }
+
+    # Execute native batch function directly
+    registry, func_mapping, _ = _get_registry()
+    batch_func = func_mapping[batch_endpoint]
+    client = get_client_func()
+
+    try:
+        result = await asyncio.to_thread(batch_func, client=client, **batch_kwargs)
+        processed = process_result(result)
+
+        # Native batch functions return Mapping[str, Iterable[Agent]] — a dict
+        # keyed by entity string. Flatten to list for consistent downstream handling,
+        # or resolve names on each value list if dict.
+        if isinstance(processed, dict):
+            # Each value is a list of items for that entity
+            all_items = []
+            for entity_key, items in processed.items():
+                if isinstance(items, list):
+                    all_items.extend(items)
+                else:
+                    all_items.append(items)
+            processed = all_items
+
+        # Resolve entity names from graph
+        if isinstance(processed, list) and processed:
+            processed = await asyncio.to_thread(resolve_entity_names, processed, client)
+
+        # Apply field projection if requested
+        if fields and isinstance(processed, list):
+            field_set = set(fields)
+            processed = [
+                {k: v for k, v in item.items() if k in field_set}
+                for item in processed if isinstance(item, dict)
+            ]
+
+        response: Dict[str, Any] = {
+            "results": processed,
+            "total_entities": len(entity_values),
+            "successful": len(grounded_entities),
+            "total_results": len(processed) if isinstance(processed, list) else 1,
+            "batch_mode": "native",
+        }
+        if failed:
+            response["failed"] = failed
+        return response
+
+    except Exception as e:
+        logger.error(f"Native batch call failed for {batch_endpoint}: {e}", exc_info=True)
+        return {
+            "error": f"Native batch call failed: {e}",
+            "batch_endpoint": batch_endpoint,
+            "failed": failed,
+        }
+
+
 async def ground_entity(
-    term: str,
+    term: Optional[str] = None,
+    terms: Optional[List[str]] = None,
     organism: Optional[str] = None,
     limit: int = 10,
     param_name: Optional[str] = None,
 ) -> Dict[str, Any]:
-    """Ground natural language term to CURIEs using GILDA.
+    """Ground natural language term(s) to CURIEs using GILDA.
 
-    Wraps gilda_ground from apps.search.search and adds:
-    - Parameter semantics filtering (param_name → namespace filter)
-    - MCP-friendly output format
+    Supports both single-term and batch modes. Batch mode iterates internally,
+    replacing N MCP round-trips with 1.
 
     Parameters
     ----------
-    term : str
-        Natural language term (e.g., "LRRK2", "Parkinson's disease")
+    term : str, optional
+        Single natural language term (e.g., "LRRK2", "Parkinson's disease")
+    terms : list of str, optional
+        Batch mode: list of terms to ground. Returns compact mappings dict.
     organism : str, optional
-        Organism context (e.g., "human", "9606")
+        Organism context. Accepts common names ("human", "mouse") or NCBI
+        taxonomy IDs ("9606", "10090"). Names are resolved internally.
+        Default when omitted: human (9606).
     limit : int
         Max results before filtering (default: 10)
     param_name : str, optional
@@ -553,37 +1027,55 @@ async def ground_entity(
     Returns
     -------
     :
-        Dict with query, groundings, top_match, param_filter, and
-        namespaces_allowed fields
+        Single mode: Dict with query, groundings, top_match, param_filter,
+        namespaces_allowed. Batch mode: Dict with mappings, failed, param_filter.
     """
+    if not term and not terms:
+        return {"error": "Provide either 'term' (single) or 'terms' (batch)"}
+
+    # Batch mode
+    if terms:
+        return await _ground_entity_batch(terms, organism, limit, param_name)
+
+    # Single-term mode (original behavior)
+    return await _ground_entity_single(term, organism, limit, param_name)
+
+
+async def _ground_entity_single(
+    term: str,
+    organism: Optional[str] = None,
+    limit: int = 10,
+    param_name: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Ground a single term to CURIEs."""
     try:
         from indra_cogex.apps.search.search import gilda_ground
 
-        # Reuse existing grounding function (handles gilda lib + HTTP fallback)
-        # Enable CURIE normalization for MCP to ensure consistent lowercase namespaces
-        raw_results = gilda_ground(
+        # F1 fix: normalize organism name → taxonomy ID before passing to gilda
+        resolved_organism = _normalize_organism(organism)
+
+        # F5/F6 fix: run blocking gilda_ground in a thread to avoid blocking the event loop
+        raw_results = await asyncio.to_thread(
+            gilda_ground,
             term,
-            organisms=[organism] if organism else None,
+            organisms=[resolved_organism] if resolved_organism else None,
             limit=limit,
-            normalize_curies=True
+            normalize_curies=True,
         )
 
-        # Handle error dict from gilda_ground
         if isinstance(raw_results, dict) and "error" in raw_results:
             return {"error": raw_results["error"], "query": term}
 
-        # Get namespace filter if param_name provided
         allowed_namespaces = None
         if param_name:
             allowed_namespaces = PARAM_NAMESPACE_FILTERS.get(param_name.lower())
 
-        # Convert to MCP format and apply namespace filtering
+        raw_count = len(raw_results) if isinstance(raw_results, list) else 0
         groundings = []
         for result in raw_results:
             term_info = result.get("term", {})
             namespace = term_info.get("db", "").lower()
 
-            # Apply namespace filter if specified
             if allowed_namespaces and namespace not in allowed_namespaces:
                 continue
 
@@ -596,13 +1088,31 @@ async def ground_entity(
                 "source": term_info.get("source", ""),
             })
 
-        return {
+        response = {
             "query": term,
             "groundings": groundings,
             "top_match": groundings[0] if groundings else None,
             "param_filter": param_name,
             "namespaces_allowed": list(allowed_namespaces) if allowed_namespaces else None,
         }
+
+        # F3 fix: add diagnostics when grounding returns no results
+        if not groundings and raw_count > 0:
+            response["diagnostics"] = {
+                "raw_matches": raw_count,
+                "filtered_out": raw_count,
+                "reason": f"All {raw_count} gilda matches excluded by namespace filter for '{param_name}'",
+            }
+        elif not groundings and raw_count == 0:
+            diag = {"raw_matches": 0, "reason": "No gilda matches for this term"}
+            if resolved_organism:
+                diag["organism_resolved"] = resolved_organism
+            if organism and organism != resolved_organism:
+                diag["organism_input"] = organism
+            response["diagnostics"] = diag
+
+        return response
+
     except ImportError as e:
         return {
             "error": f"Grounding dependencies not available: {e}",
@@ -612,11 +1122,111 @@ async def ground_entity(
         return {"error": f"Grounding failed: {e}", "query": term}
 
 
-def get_navigation_schema() -> Dict[str, Any]:
-    """Get the full navigation schema (edge map) for discovery.
+async def _ground_entity_batch(
+    terms: List[str],
+    organism: Optional[str] = None,
+    limit: int = 10,
+    param_name: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Ground multiple terms, returning compact mappings.
+
+    Uses concurrent asyncio.gather for throughput — 1 MCP call instead of N,
+    with bounded concurrency via semaphore.
+    """
+    try:
+        from indra_cogex.apps.search.search import gilda_ground
+
+        # F1 fix: normalize organism name → taxonomy ID
+        resolved_organism = _normalize_organism(organism)
+
+        allowed_namespaces = None
+        if param_name:
+            allowed_namespaces = PARAM_NAMESPACE_FILTERS.get(param_name.lower())
+
+        # Gilda lookups are fast (~5ms each, read-only trie), higher concurrency OK
+        semaphore = asyncio.Semaphore(20)
+
+        async def _ground_one(term: str) -> Tuple[str, Optional[Dict], Optional[str]]:
+            """Ground a single term, returning (term, mapping_or_None, error_or_None)."""
+            async with semaphore:
+                try:
+                    # F5/F6 fix: run blocking gilda_ground in a thread
+                    raw_results = await asyncio.to_thread(
+                        gilda_ground,
+                        term,
+                        organisms=[resolved_organism] if resolved_organism else None,
+                        limit=limit,
+                        normalize_curies=True,
+                    )
+
+                    if isinstance(raw_results, dict) and "error" in raw_results:
+                        return (term, None, raw_results["error"])
+
+                    # Find best match after namespace filtering
+                    best = None
+                    for result in raw_results:
+                        term_info = result.get("term", {})
+                        namespace = term_info.get("db", "").lower()
+                        if allowed_namespaces and namespace not in allowed_namespaces:
+                            continue
+                        best = {
+                            "curie": f"{term_info.get('db', '')}:{term_info.get('id', '')}",
+                            "name": term_info.get("entry_name", ""),
+                            "score": round(result.get("score", 0), 3),
+                        }
+                        break  # Take first match after filtering
+
+                    return (term, best, None)
+
+                except Exception as e:
+                    logger.warning(f"Batch grounding failed for '{term}': {e}")
+                    return (term, None, str(e))
+
+        results = await asyncio.gather(*[_ground_one(t) for t in terms])
+
+        # Merge results
+        mappings = {}
+        failed = {}
+        for term, mapping, error in results:
+            if error:
+                failed[term] = {"error": error}
+            elif mapping:
+                mappings[term] = mapping
+            else:
+                failed[term] = {"error": "No matching grounding after namespace filtering"}
+
+        result = {
+            "mappings": mappings,
+            "mapped_count": len(mappings),
+            "failed_count": len(failed),
+            "param_filter": param_name,
+        }
+        if failed:
+            result["failed"] = failed
+        return result
+
+    except ImportError as e:
+        return {
+            "error": f"Grounding dependencies not available: {e}",
+            "hint": "Install gilda: pip install gilda",
+        }
+    except Exception as e:
+        return {"error": f"Batch grounding failed: {e}"}
+
+
+def get_navigation_schema(
+    entity_type: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Get the navigation schema (edge map) for discovery.
+
+    Parameters
+    ----------
+    entity_type : str, optional
+        Filter to edges from/to this entity type (e.g., "Gene", "Disease").
+        When omitted, returns the full schema.
 
     Returns all possible navigation paths in the knowledge graph
-    as extracted from function signatures, including parameter info.
+    as extracted from function signatures.
     """
     registry, _, edge_map = _get_registry()
 
@@ -630,21 +1240,15 @@ def get_navigation_schema() -> Dict[str, Any]:
 
     for source, targets in sorted(edge_map.items()):
         for target, functions in sorted(targets.items()):
-            # Include parameter info so agent knows exact param names
-            func_details = []
-            for fn in functions:
-                if fn in registry:
-                    params = registry[fn].parameters
-                    param_info = {k: v.get("type", "unknown") for k, v in params.items()}
-                    func_details.append({"name": fn, "params": param_info})
-                else:
-                    func_details.append({"name": fn})
+            # Filter by entity_type if specified
+            if entity_type and source != entity_type and target != entity_type:
+                continue
 
+            # Return just function names — params are inferrable from name pattern
             schema["edges"].append({
                 "from": source,
                 "to": target,
-                "functions": func_details,
-                "count": len(functions),
+                "functions": list(functions),
             })
 
     return schema
@@ -653,11 +1257,12 @@ def get_navigation_schema() -> Dict[str, Any]:
 def register_gateway_tools(mcp, get_client_func: Callable) -> int:
     """Register gateway tools on MCP server.
 
-    Only 4 tools instead of 100+:
+    Only 5 tools instead of 100+:
     1. ground_entity - Natural language → CURIEs
     2. suggest_endpoints - Graph navigation suggestions
     3. call_endpoint - Execute any autoclient function
     4. get_navigation_schema - Full edge map for discovery
+    5. batch_call - Execute endpoint for multiple entities in parallel
 
     Parameters
     ----------
@@ -669,7 +1274,7 @@ def register_gateway_tools(mcp, get_client_func: Callable) -> int:
     Returns
     -------
     :
-        Number of tools registered (always 4)
+        Number of tools registered (always 5)
     """
     # Pre-build registry
     _get_registry()
@@ -679,12 +1284,16 @@ def register_gateway_tools(mcp, get_client_func: Callable) -> int:
         annotations={"title": "Ground Entity (GILDA)", "readOnlyHint": True}
     )
     async def ground_entity_tool(
-        term: str,
+        term: Optional[str] = None,
+        terms: Optional[List[str]] = None,
         organism: Optional[str] = None,
         limit: int = 10,
         param_name: Optional[str] = None,
     ) -> str:
         """Ground natural language to CURIEs using GILDA with semantic filtering.
+
+        Supports single term or batch mode. Batch mode grounds multiple terms
+        in one call, returning compact mappings.
 
         Parameter semantics eliminate cross-type ambiguity:
         - disease="ALS" → filters to disease namespaces → MESH:D000690 (not SOD1 gene)
@@ -693,8 +1302,11 @@ def register_gateway_tools(mcp, get_client_func: Callable) -> int:
 
         Parameters
         ----------
-        term : str
-            Natural language term (e.g., "LRRK2", "Parkinson's disease")
+        term : str, optional
+            Single natural language term (e.g., "LRRK2", "Parkinson's disease")
+        terms : list of str, optional
+            Batch mode: multiple terms to ground in one call.
+            Returns compact {mappings: {term: {curie, name, score}}, failed: [...]}
         organism : str, optional
             Organism context (e.g., "human")
         limit : int
@@ -703,8 +1315,8 @@ def register_gateway_tools(mcp, get_client_func: Callable) -> int:
             Parameter type for semantic filtering: disease, gene, drug, pathway, etc.
             Filters results to appropriate namespaces for that entity type.
         """
-        result = await ground_entity(term, organism, limit, param_name)
-        return json.dumps(result, indent=2, default=str)
+        result = await ground_entity(term, terms, organism, limit, param_name)
+        return compact_json(result)
 
     @mcp.tool(
         name="suggest_endpoints",
@@ -730,7 +1342,7 @@ def register_gateway_tools(mcp, get_client_func: Callable) -> int:
             Max suggestions per entity type
         """
         result = suggest_endpoints(entity_ids, intent, top_k)
-        return json.dumps(result, indent=2, default=str)
+        return compact_json(result)
 
     @mcp.tool(
         name="call_endpoint",
@@ -743,6 +1355,10 @@ def register_gateway_tools(mcp, get_client_func: Callable) -> int:
         disclosure_level: Optional[str] = None,
         offset: int = 0,
         limit: Optional[int] = None,
+        include_navigation: bool = False,
+        fields: Optional[List[str]] = None,
+        estimate: bool = False,
+        sort_by: Optional[str] = None,
     ) -> str:
         """Call any autoclient endpoint with optional auto-grounding.
 
@@ -767,35 +1383,116 @@ def register_gateway_tools(mcp, get_client_func: Callable) -> int:
             from previous response to continue fetching.
         limit : int, optional
             Max items per page. Responses are auto-truncated to ~20k tokens.
+        include_navigation : bool
+            Include suggested next navigation steps (default: False).
+            Set to True when exploring unfamiliar entity types.
+        fields : list of str, optional
+            Project results to only these keys (e.g., ["db_ns", "db_id", "name"]).
+            Dramatically reduces token usage for large result sets.
+        estimate : bool
+            Estimate mode (default: False). When True, executes the query and
+            caches results server-side, but returns only metadata (count, token
+            cost, sample, available fields). Use this to probe query cost before
+            fetching full results. Subsequent calls with same endpoint+kwargs
+            serve from cache.
+
+            For large result sets, use estimate=True first to probe query cost,
+            then fetch with fields projection and pagination:
+              1. estimate=True -> see count, token cost, available fields, sample
+              2. fields=["db_ns","db_id","name"], limit=50 -> fetch compact page
+        sort_by : str, optional
+            Sort results before pagination. Options:
+            - "evidence": Descending by source_counts sum (most-validated first)
+            - "name": Alphabetical by entity name
+            Default: None (preserve query order).
         """
         result = await call_endpoint(
             endpoint, kwargs, get_client_func, auto_ground, disclosure_level,
-            offset=offset, limit=limit
+            offset=offset, limit=limit,
+            include_navigation=include_navigation, fields=fields,
+            estimate=estimate, sort_by=sort_by,
         )
-        return json.dumps(result, indent=2, default=str)
+        return compact_json(result)
 
     @mcp.tool(
         name="get_navigation_schema",
         annotations={"title": "Get Navigation Schema", "readOnlyHint": True}
     )
-    async def get_navigation_schema_tool() -> str:
+    async def get_navigation_schema_tool(
+        entity_type: Optional[str] = None,
+    ) -> str:
         """Get full navigation schema showing all entity types and edges.
 
         Returns the complete map of how entity types connect in the
         knowledge graph, extracted from function signatures.
-        """
-        result = get_navigation_schema()
-        return json.dumps(result, indent=2, default=str)
 
-    logger.info("Registered 4 gateway tools: ground_entity, suggest_endpoints, "
-                "call_endpoint, get_navigation_schema")
-    return 4
+        Parameters
+        ----------
+        entity_type : str, optional
+            Filter to edges from/to this entity type (e.g., "Gene", "Disease").
+            Dramatically reduces response size when you only need edges for one type.
+        """
+        result = get_navigation_schema(entity_type=entity_type)
+        return compact_json(result)
+
+    @mcp.tool(
+        name="batch_call",
+        annotations={"title": "Batch Call Endpoint", "readOnlyHint": True}
+    )
+    async def batch_call_tool(
+        endpoint: str,
+        entity_param: str,
+        entity_values: List[str],
+        common_kwargs: str = "{}",
+        auto_ground: bool = True,
+        fields: Optional[List[str]] = None,
+        max_concurrent: int = 10,
+        merge_strategy: str = "keyed",
+    ) -> str:
+        """Execute an endpoint for multiple entities in parallel.
+
+        Replaces N serial call_endpoint calls with 1 batch call.
+        Internally fans out via asyncio.gather, or routes to native
+        batch functions where available (single Neo4j query).
+
+        Parameters
+        ----------
+        endpoint : str
+            Function name (e.g., "get_diseases_for_gene")
+        entity_param : str
+            Which parameter to batch over (e.g., "gene")
+        entity_values : list of str
+            Entity values to query (e.g., ["SIRT3", "PRKN", "MAPT", "NLRP3"])
+            Auto-grounded if auto_ground=True.
+        common_kwargs : str
+            JSON string of additional shared parameters (default: "{}")
+        auto_ground : bool
+            Auto-ground entity strings to CURIEs (default: True)
+        fields : list of str, optional
+            Project results to only these keys per item.
+        max_concurrent : int
+            Max parallel queries (default: 10, prevents Neo4j overload)
+        merge_strategy : str
+            "keyed" (default): {entity: results} dict.
+            "flat": All results concatenated into one list.
+        """
+        result = await batch_call(
+            endpoint, entity_param, entity_values, common_kwargs,
+            get_client_func, auto_ground, fields, max_concurrent,
+            merge_strategy,
+        )
+        return compact_json(result)
+
+    logger.info("Registered 5 gateway tools: ground_entity, suggest_endpoints, "
+                "call_endpoint, get_navigation_schema, batch_call")
+    return 5
 
 
 __all__ = [
     "register_gateway_tools",
     "suggest_endpoints",
     "call_endpoint",
+    "batch_call",
     "ground_entity",
     "get_navigation_schema",
     "clear_registry_cache",

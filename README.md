@@ -2,9 +2,11 @@
 
 MCP server and agent tools for INDRA CoGEx knowledge graph exploration.
 
-Enables AI agents to explore biomedical knowledge through the Model Context Protocol (MCP). Replaces 100+ individual function tools with 9 composable tools that expose the full power of Cypher queries while maintaining safety and usability.
+Enables AI agents to explore biomedical knowledge through the Model Context Protocol (MCP). Replaces 100+ individual function tools with 8 composable tools that expose the full power of Cypher queries while maintaining safety and usability.
 
 ## Installation
+
+Requires **Python >= 3.10**.
 
 ```bash
 pip install git+https://github.com/gyorilab/indra_agent.git
@@ -20,6 +22,8 @@ pip install -e ".[dev]"
 
 ## Configuration
 
+### Neo4j Credentials
+
 Set Neo4j credentials via environment variables:
 
 ```bash
@@ -28,11 +32,43 @@ export INDRA_NEO4J_USER="neo4j"
 export INDRA_NEO4J_PASSWORD="your-password"
 ```
 
-Or create a `.env` file in your working directory.
+Or configure them in `~/.config/indra/config.ini` (the standard INDRA config file).
+
+### Transport Security (Required)
+
+The server requires `MCP_ALLOWED_HOSTS` and `MCP_ALLOWED_ORIGINS` to be set. Without these, the server will not start.
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `MCP_ALLOWED_HOSTS` | Yes | Comma-separated allowed hosts (e.g., `localhost,discovery.indra.bio`) |
+| `MCP_ALLOWED_ORIGINS` | Yes | Comma-separated allowed origins (e.g., `http://localhost:3000,https://discovery.indra.bio`) |
+
+```bash
+export MCP_ALLOWED_HOSTS="localhost,discovery.indra.bio"
+export MCP_ALLOWED_ORIGINS="http://localhost:3000,https://discovery.indra.bio"
+```
+
+### HTTP Mode
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `MCP_HOST` | `0.0.0.0` | Host to bind in HTTP mode |
+| `MCP_PORT` | `8000` | Port to bind in HTTP mode |
+
+### Cache
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `INDRA_CACHE_DIR` | `~/.cache/indra_cogex_mcp` | Cache directory path |
+| `INDRA_CACHE_SIZE_MB` | `2048` | Max cache size in MB |
+| `INDRA_CACHE_TTL` | `3600` | Default TTL in seconds |
+| `INDRA_CACHE_SHARDS` | `4` | Number of cache shards |
 
 ## Usage
 
-### Run the MCP Server
+### Stdio Mode (Default)
+
+For local clients like Claude Desktop and Cursor:
 
 ```bash
 # Via console script
@@ -40,6 +76,21 @@ indra-agent
 
 # Or via module
 python -m indra_agent.mcp_server
+```
+
+### HTTP Mode
+
+For network access:
+
+```bash
+# Run in HTTP mode
+indra-agent --http
+
+# Custom host and port
+indra-agent --http --host 0.0.0.0 --port 8000
+
+# Stateful with SSE streaming
+indra-agent --http --stateful --streaming
 ```
 
 ### Claude Desktop Configuration
@@ -54,7 +105,9 @@ Add to `~/Library/Application Support/Claude/claude_desktop_config.json`:
       "env": {
         "INDRA_NEO4J_URL": "bolt://your-server:7687",
         "INDRA_NEO4J_USER": "neo4j",
-        "INDRA_NEO4J_PASSWORD": "your-password"
+        "INDRA_NEO4J_PASSWORD": "your-password",
+        "MCP_ALLOWED_HOSTS": "localhost",
+        "MCP_ALLOWED_ORIGINS": "http://localhost"
       }
     }
   }
@@ -63,19 +116,19 @@ Add to `~/Library/Application Support/Claude/claude_desktop_config.json`:
 
 ## Tools
 
-**9 tools** organized into two groups:
+**8 tools** organized into two groups:
 
 ### Gateway Tools (4 tools)
-High-level graph navigation—most agents start here:
+High-level graph navigation -- most agents start here:
 
 | Tool | Purpose |
 |------|---------|
-| `ground_entity` | Natural language → CURIE with semantic filtering |
+| `ground_entity` | Natural language to CURIE with semantic filtering |
 | `suggest_endpoints` | Given CURIEs, suggest reachable entity types and functions |
-| `call_endpoint` | Execute any of 190+ autoclient functions with auto-grounding |
+| `call_endpoint` | Execute any of 100+ autoclient functions with auto-grounding |
 | `get_navigation_schema` | Full edge map showing how entity types connect |
 
-### Query Infrastructure (5 tools)
+### Query Infrastructure (4 tools)
 Low-level Cypher access for complex queries:
 
 | Tool | Purpose |
@@ -89,13 +142,13 @@ Low-level Cypher access for complex queries:
 
 ```mermaid
 flowchart LR
-    Agent["🤖 Agent"]
+    Agent["Agent"]
 
     subgraph Gateway["Gateway Tools"]
         direction TB
-        Ground["ground_entity<br/><i>NL → CURIE</i>"]
+        Ground["ground_entity<br/><i>NL to CURIE</i>"]
         Suggest["suggest_endpoints<br/><i>navigation hints</i>"]
-        Call["call_endpoint<br/><i>190+ functions</i>"]
+        Call["call_endpoint<br/><i>100+ functions</i>"]
         NavSchema["get_navigation_schema<br/><i>edge map</i>"]
     end
 
@@ -139,7 +192,7 @@ flowchart LR
     class Neo,GILDA data
 ```
 
-Most agents use Gateway Tools—ground natural language to CURIEs, then call pre-built functions. When predefined functions cannot express the query (graph algorithms, multi-hop traversals, conditional aggregations), agents drop down to Query Infrastructure: discover schema, execute Cypher with validation, enrich results.
+Most agents use Gateway Tools -- ground natural language to CURIEs, then call pre-built functions. When predefined functions cannot express the query (graph algorithms, multi-hop traversals, conditional aggregations), agents drop down to Query Infrastructure: discover schema, execute Cypher with validation, enrich results.
 
 ### Context-Aware Grounding
 
@@ -155,7 +208,7 @@ ground_entity(term="ALS", param_name="gene")
 
 ### Safety
 
-- **Validation layer** prevents destructive operations (DELETE, CREATE, MERGE)
+- **Validation layer** prevents all write/mutate operations (DELETE, CREATE, MERGE, SET, REMOVE, DROP, DETACH)
 - **Parameterized queries** prevent injection attacks
 - **Neo4j `execute_read()`** enforces read-only semantics at the driver level
 
@@ -195,6 +248,11 @@ pytest tests/mcp_server/test_gateway_tools.py -v
 - `mcp>=1.2.0` - Model Context Protocol SDK
 - `gilda` - Biomedical entity grounding
 - `pydantic>=2.0` - Data validation
+- `click>=8.0` - CLI framework
+- `starlette>=0.27.0` - ASGI framework
+- `uvicorn>=0.20.0` - ASGI server (HTTP mode)
+- `jinja2>=3.0.0` - Template engine
+- `diskcache>=5.6` - Persistent caching
 
 ## License
 
