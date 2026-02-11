@@ -27,6 +27,8 @@ classifiers = [
 keywords = ["mcp", "agent", "knowledge-graph", "indra", "biomedical"]
 
 dependencies = [
+    "indra @ git+https://github.com/gyorilab/indra.git",
+    "pysb @ git+https://github.com/alubbock/pysb.git@fix-install-py3.14",
     "indra_cogex[web,gsea] @ git+https://github.com/gyorilab/indra_cogex.git@fix-web-api",
     "mcp>=1.2.0",
     "gilda",
