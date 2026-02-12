@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{{ server_name }} - MCP Server</title>
+    <title>INDRA Knowledge Graph - MCP Server</title>
     <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
     <style>
         * {
@@ -440,8 +440,8 @@
     <div class="container">
         <!-- Hero Section -->
         <div class="hero">
-            <h1>{{ server_name }}</h1>
-            <p class="tagline">INDRA CoGEx Knowledge Graph via Model Context Protocol</p>
+            <h1>INDRA Knowledge Graph</h1>
+            <p class="tagline">INDRA Knowledge Graph Model Context Protocol server</p>
             <div class="status">✓ Server is running</div>
 
             <div class="quick-concept">
@@ -449,9 +449,9 @@
                 <div class="arrow">→</div>
                 <div class="box">MCP Protocol</div>
                 <div class="arrow">→</div>
-                <div class="box">This Server</div>
+                <div class="box">This MCP server</div>
                 <div class="arrow">→</div>
-                <div class="box">Biomedical Knowledge</div>
+                <div class="box">INDRA Knowledge Graph</div>
             </div>
         </div>
 
@@ -464,33 +464,19 @@
 
                 <p><strong>Model Context Protocol (MCP)</strong> is an open standard that enables AI assistants to
                     securely connect to external data sources and tools. Think of it as a universal adapter that lets AI
-                    models like Claude access your local files, databases, APIs, and specialized services in a safe,
+                    models like Claude access databases, APIs, and specialized services in a safe,
                     standardized way.</p>
 
-                <div class="info-box highlight">
-                    <h3>Why MCP Matters</h3>
-                    <ul>
-                        <li><strong>Universal Standard:</strong> One protocol for connecting any AI client to any data
-                            source</li>
-                        <li><strong>Security First:</strong> Built-in protections against unauthorized access and DNS
-                            rebinding attacks</li>
-                        <li><strong>Extensible:</strong> Easily add new capabilities without modifying the AI assistant
-                        </li>
-                        <li><strong>Separation of Concerns:</strong> Data providers focus on their domain; AI clients
-                            focus on reasoning</li>
-                    </ul>
-                </div>
-
-                <h3>How MCP Works</h3>
+                <h3>How this MCP server works</h3>
 
                 <div class="diagram-container">
                     <div class="mermaid">
                         graph LR
-                        A[AI Client<br />Claude, Cursor, etc.] -->|MCP Protocol| B[MCP Server<br />indra-cogex]
-                        B --> C[Tools<br />Execute queries]
-                        B --> D[Resources<br />Graph schema]
-                        B --> E[Prompts<br />Query templates]
-                        C --> F[Neo4j Database<br />Knowledge Graph]
+                        A[AI client<br />Claude, Cursor, etc.] -->|MCP Protocol| B[MCP server<br />(indra-cogex)]
+                        B --> C[Tools<br />(execute queries)]
+                        B --> D[Resources<br />(graph schema)]
+                        B --> E[Prompts<br />(query templates)]
+                        C --> F[INDRA Knowledge Graph <br />(neo4j database)]
                         D --> F
                         E --> F
 
@@ -514,7 +500,7 @@
 
             <!-- About This Server -->
             <section class="section">
-                <h2>About This MCP Server</h2>
+                <h2>About this MCP Server</h2>
 
                 <p>This server provides programmatic access to the <strong>INDRA CoGEx</strong> knowledge graph—a
                     comprehensive biomedical knowledge base integrating multiple sources of biological and chemical
@@ -523,26 +509,23 @@
                 <div class="info-box success">
                     <h3>What You Can Do</h3>
                     <ul>
-                        <li><strong>Explore Biology:</strong> Query relationships between genes, proteins, diseases,
-                            drugs, and more</li>
-                        <li><strong>Discover Connections:</strong> Navigate complex pathways and interaction networks
+                        <li><strong>Explore biological prior knowledge:</strong> Query relationships between genes, proteins, diseases, drugs, and more from causal knowledge assembled by INDRA from literature and databases.</li>
+                        <li><strong>Discover connections:</strong> Navigate links between literature and data sources such as clinical trials, tissue gene expression profiles, cancer cell lines, etc. 
                         </li>
-                        <li><strong>Validate Knowledge:</strong> Cross-reference information from multiple authoritative
-                            sources</li>
-                        <li><strong>Research Assistance:</strong> Let AI help you formulate and execute sophisticated
-                            queries</li>
+                        <li><strong>Validate knowledge:</strong> Cross-reference information from multiple sources through connected knowledge in the graph</li>
+                        <li><strong>Research assistance:</strong> Let a AI agent help you formulate and execute sophisticated queries that would require multiple rounds of sequential planning and coding if done manually.</li>
                     </ul>
                 </div>
 
                 <h3>Server Capabilities</h3>
                 <ul>
-                    <li><strong>Schema Discovery:</strong> Explore graph structure and entity types available in CoGEx
+                    <li><strong>Schema discovery:</strong> Explore graph structure and entity types available in CoGEx
                     </li>
-                    <li><strong>Query Execution:</strong> Execute Cypher queries on the Neo4j knowledge graph</li>
-                    <li><strong>Query Validation:</strong> Validate query syntax before execution to catch errors early
+                    <li><strong>Query execution:</strong> Execute Cypher queries on the Neo4j knowledge graph</li>
+                    <li><strong>Query validation:</strong> Validate query syntax before execution to catch errors early
                     </li>
-                    <li><strong>Result Enrichment:</strong> Automatically add metadata and context to query results</li>
-                    <li><strong>Graph Navigation:</strong> Use specialized tools to traverse the knowledge graph
+                    <li><strong>Result enrichment:</strong> Automatically add metadata and context to query results</li>
+                    <li><strong>Graph navigation:</strong> Use specialized tools to traverse the knowledge graph
                         efficiently</li>
                 </ul>
             </section>
@@ -624,8 +607,8 @@
             <section class="section">
                 <h2>Example Usage</h2>
 
-                <p>Once connected, simply ask questions in plain English. The AI handles all the complexity of querying
-                    the knowledge graph—you focus on the science:</p>
+                <p>Once connected, simply ask questions in plain English. The AI agent using this MCP server will handle the queries toward
+                    the knowledge graph:</p>
 
                 <div class="collapsible" onclick="toggleCollapsible(this)">
                     <span class="collapsible-title">💊 Drug Repurposing Discovery</span>
@@ -635,6 +618,8 @@
                     <div class="collapsible-content-inner">
                         <p><strong>Ask:</strong> <em>"Find drugs that target genes associated with ALS—I'm looking for
                                 repurposing candidates with clinical evidence."</em></p>
+
+                        Below are the steps Claude Code runs in the background using this MCP server:
 
                         <h3>Step 1: Ground "ALS" to a canonical identifier</h3>
                         <div class="code-block">
@@ -721,6 +706,7 @@
                     <div class="collapsible-content-inner">
                         <p><strong>Ask:</strong> <em>"Which genes are shared between Parkinson's and Alzheimer's
                                 disease? Find drugs targeting these shared genes."</em></p>
+                        Below are the steps Claude Code runs in the background using this MCP server:
 
                         <h3>Step 1: Ground both diseases</h3>
                         <div class="code-block">
@@ -809,6 +795,7 @@
                     <div class="collapsible-content-inner">
                         <p><strong>Ask:</strong> <em>"Show me clinical trials and drugs for pancreatic cancer. What's
                                 the competitive landscape?"</em></p>
+                        Below are the steps Claude Code runs in the background using this MCP server:
 
                         <h3>Step 1: Ground the indication</h3>
                         <div class="code-block">
@@ -878,6 +865,7 @@
                     <div class="collapsible-content-inner">
                         <p><strong>Ask:</strong> <em>"For EGFR, show me all diseases where it's implicated and drugs
                                 that target it."</em></p>
+                        Below are the steps Claude Code runs in the background using this MCP server:
 
                         <h3>Step 1: Ground the gene</h3>
                         <div class="code-block">
@@ -946,6 +934,7 @@
                     <div class="collapsible-content-inner">
                         <p><strong>Ask:</strong> <em>"What conditions is metformin being studied for beyond diabetes?
                                 Show me the breadth of indications."</em></p>
+                        Below are the steps Claude Code runs in the background using this MCP server:
 
                         <h3>Step 1: Ground the drug</h3>
                         <div class="code-block">
@@ -993,13 +982,14 @@
                 </div>
 
                 <div class="collapsible" onclick="toggleCollapsible(this)">
-                    <span class="collapsible-title">🧪 Biomarker Discovery</span>
+                    <span class="collapsible-title">🧪 Biomarker/target Discovery</span>
                     <span class="collapsible-icon">▼</span>
                 </div>
                 <div class="collapsible-content">
                     <div class="collapsible-content-inner">
                         <p><strong>Ask:</strong> <em>"What genes are associated with triple-negative breast cancer? Are
                                 any druggable?"</em></p>
+                        Below are the steps Claude Code runs in the background using this MCP server:
 
                         <h3>Step 1: Ground the disease</h3>
                         <div class="code-block">
@@ -1052,14 +1042,14 @@
                 <div class="info-box">
                     <h3>Resources</h3>
                     <ul>
-                        <li><strong>MCP Specification:</strong> <a href="https://spec.modelcontextprotocol.io/"
-                                target="_blank">spec.modelcontextprotocol.io</a></li>
-                        <li><strong>INDRA CoGEx:</strong> <a href="https://github.com/indralab/indra_cogex"
-                                target="_blank">github.com/indralab/indra_cogex</a></li>
-                        <li><strong>Server Source:</strong> <a href="https://github.com/gyorilab/indra_agent"
-                                target="_blank">github.com/gyorilab/indra_agent</a></li>
-                        <li><strong>INDRA Documentation:</strong> <a href="https://indra.readthedocs.io/"
-                                target="_blank">indra.readthedocs.io</a></li>
+                        <li><strong>INDRA Discovery portal:</strong> <a href="https://discovery.indra.bio"
+                                target="_blank">https://discovery.indra.bio</a></li>
+                        <li><strong>INDRA Discovery code:</strong> <a href="https://github.com/gyorilab/indra_cogex"
+                                target="_blank">https://github.com/gyorilab/indra_cogex</a></li>
+                        <li><strong>INDRA Agent code (this server):</strong> <a href="https://github.com/gyorilab/indra_agent"
+                                target="_blank">https://github.com/gyorilab/indra_agent</a></li>
+                        <li><strong>General MCP specification:</strong> <a href="https://spec.modelcontextprotocol.io/"
+                                target="_blank">https://spec.modelcontextprotocol.io</a></li>
                     </ul>
                 </div>
             </section>
@@ -1068,7 +1058,7 @@
 
         <!-- Footer -->
         <div class="footer">
-            <p><strong>INDRA CoGEx MCP Server</strong> | Model Context Protocol</p>
+            <p><strong>INDRA CoGEx Knowledge Graph MCP Server</strong> | Model Context Protocol</p>
             <p style="margin-top: 10px; font-size: 0.9em;">
                 Developed by <a href="https://github.com/gyorilab" target="_blank">Gyori Lab</a> |
                 <a href="https://github.com/gyorilab/indra_agent/issues" target="_blank">Report Issues</a>
