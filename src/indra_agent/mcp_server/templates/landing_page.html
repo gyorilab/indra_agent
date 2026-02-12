@@ -472,11 +472,11 @@
                 <div class="diagram-container">
                     <div class="mermaid">
                         graph LR
-                        A[AI client<br />Claude, Cursor, etc.] -->|MCP Protocol| B[MCP server<br />(indra-cogex)]
-                        B --> C[Tools<br />(execute queries)]
-                        B --> D[Resources<br />(graph schema)]
-                        B --> E[Prompts<br />(query templates)]
-                        C --> F[INDRA Knowledge Graph<br />(neo4j database)]
+                        A[AI client<br />Claude, Cursor, etc.] -->|MCP Protocol| B["MCP server<br />(indra-cogex)"]
+                        B --> C["Tools<br />(execute queries)"]
+                        B --> D["Resources<br />(graph schema)"]
+                        B --> E["Prompts<br />(query templates)"]
+                        C --> F["INDRA Knowledge Graph<br />(neo4j database)"]
                         D --> F
                         E --> F
 
@@ -510,7 +510,7 @@
                     <h3>What You Can Do</h3>
                     <ul>
                         <li><strong>Explore biological prior knowledge:</strong> Query relationships between genes, proteins, diseases, drugs, and more from causal knowledge assembled by INDRA from literature and databases.</li>
-                        <li><strong>Discover connections:</strong> Navigate links between literature and data sources such as clinical trials, tissue gene expression profiles, cancer cell lines, etc. 
+                        <li><strong>Discover connections:</strong> Navigate links between literature and data sources such as clinical trials, tissue gene expression profiles, cancer cell lines, etc.
                         </li>
                         <li><strong>Validate knowledge:</strong> Cross-reference information from multiple sources through connected knowledge in the graph</li>
                         <li><strong>Research assistance:</strong> Let a AI agent help you formulate and execute sophisticated queries that would require multiple rounds of sequential planning and coding if done manually.</li>
