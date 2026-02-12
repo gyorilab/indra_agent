@@ -101,6 +101,52 @@ PARAM_NAMESPACE_FILTERS = {
     'molecule': {'chebi', 'drugbank', 'pubchem.compound', 'chembl'},  # Same as drug
 }
 
+def _build_organism_map() -> dict:
+    """Build organism name → taxonomy ID mapping from gilda's canonical data.
+
+    Layers (in order of construction):
+    1. Latin names from gilda.resources.organism_labels (inverted)
+    2. Common English names validated against NCBI Entrez Taxonomy API
+
+    Anything not in this local map is resolved at runtime via NCBI Entrez
+    (see _normalize_organism in autoclient_tools.py).
+    """
+    mapping = {}
+
+    # Layer 1: Invert gilda's canonical taxonomy_id → Latin name mapping
+    # These are authoritative — gilda uses them for organism filtering.
+    try:
+        from gilda.resources import organism_labels
+        for tax_id, latin_name in organism_labels.items():
+            mapping[latin_name.lower()] = tax_id
+    except ImportError:
+        pass
+
+    # Layer 2: Common English names validated against NCBI Entrez (2026-02-08).
+    # Only includes names where NCBI returns the exact expected taxonomy ID.
+    # All other common names (fly, worm, yeast, etc.) are intentionally
+    # omitted — they are ambiguous and NCBI cannot resolve them to the
+    # specific model organism strain. The NCBI Entrez fallback in
+    # _normalize_organism handles novel/formal names at runtime.
+    _validated_common_names = {
+        'human': '9606',       # NCBI-validated
+        'mouse': '10090',      # NCBI-validated
+        'rat': '10116',        # NCBI-validated
+        'cow': '9913',         # NCBI-validated
+        'zebrafish': '7955',   # NCBI-validated
+        'thale cress': '3702', # NCBI-validated
+    }
+    mapping.update(_validated_common_names)
+
+    return mapping
+
+
+# Gilda requires taxonomy IDs (e.g., "9606"), not names (e.g., "human").
+# Passing unrecognized strings silently drops all organism-specific results.
+# Built from gilda.resources.organism_labels + NCBI-validated common names.
+# Unknown names fall through to NCBI Entrez API at runtime.
+ORGANISM_TO_TAXONOMY_ID = _build_organism_map()
+
 # Ambiguity detection thresholds
 MIN_CONFIDENCE_THRESHOLD = 0.5  # Absolute: top score must be >= this
 AMBIGUITY_SCORE_THRESHOLD = 0.3  # Relative: no result in top 5 within this of top
@@ -111,4 +157,5 @@ __all__ = [
     'PARAM_NAMESPACE_FILTERS',
     'MIN_CONFIDENCE_THRESHOLD',
     'AMBIGUITY_SCORE_THRESHOLD',
+    'ORGANISM_TO_TAXONOMY_ID',
 ]

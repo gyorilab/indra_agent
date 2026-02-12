@@ -33,6 +33,46 @@ class DisclosureLevel(str, Enum):
     EXPLORATORY = "exploratory"
 
 
+def _build_type_metadata(
+    result_type: Optional[str],
+    disclosure_level: DisclosureLevel,
+) -> Optional[dict]:
+    """Build type-level metadata once (not per-item) based on disclosure level.
+
+    Returns None for MINIMAL level since no metadata is needed.
+    """
+    if disclosure_level == DisclosureLevel.MINIMAL or not result_type:
+        return None
+
+    meta = {"type": result_type}
+
+    # STANDARD: description + basic next steps
+    if disclosure_level.value in ("standard", "detailed", "exploratory"):
+        meta["description"] = ENTITY_DESCRIPTIONS.get(
+            result_type, f"{result_type.capitalize()} entity from CoGEx knowledge graph"
+        )
+        meta["next_steps"] = NEXT_STEPS_STANDARD.get(
+            result_type, [f"Explore {result_type} relationships in graph"]
+        )
+
+    # DETAILED: expanded next steps + provenance
+    if disclosure_level.value in ("detailed", "exploratory"):
+        meta["next_steps"] = NEXT_STEPS_DETAILED.get(
+            result_type, meta.get("next_steps", [])
+        )
+        meta["provenance"] = {"source": "CoGEx Knowledge Graph", "entity_type": result_type}
+
+    # EXPLORATORY: workflows + research context
+    if disclosure_level == DisclosureLevel.EXPLORATORY:
+        meta["workflows"] = WORKFLOWS.get(result_type, [])
+        meta["research_context"] = {
+            "common_queries": COMMON_QUERIES.get(result_type, ["Explore entity relationships"]),
+            "related_fields": RELATED_FIELDS.get(result_type, ["biomedical research"]),
+        }
+
+    return meta
+
+
 def enrich_results(
     results: list,
     disclosure_level: DisclosureLevel = DisclosureLevel.STANDARD,
@@ -42,6 +82,9 @@ def enrich_results(
     limit: Optional[int] = None,
 ) -> dict:
     """Add progressive metadata to query results with pagination support.
+
+    Metadata is attached ONCE at the response level (_type_metadata), not
+    duplicated per item. This dramatically reduces token cost for large result sets.
 
     Parameters
     ----------
@@ -61,7 +104,7 @@ def enrich_results(
     Returns
     -------
     :
-        Dict with results, disclosure_level, metadata, pagination, and token_estimate
+        Dict with results, _type_metadata, disclosure_level, pagination, and token_estimate
     """
     # Handle string disclosure level for backwards compatibility
     if isinstance(disclosure_level, str):
@@ -73,23 +116,12 @@ def enrich_results(
     if result_type is None:
         result_type = _infer_result_type(results)
 
-    enriched = []
-    for item in results:
-        if disclosure_level == DisclosureLevel.MINIMAL:
-            enriched.append(item)
-        elif disclosure_level == DisclosureLevel.STANDARD:
-            enriched_item = _add_standard_metadata(item, result_type, client)
-            enriched.append(enriched_item)
-        elif disclosure_level == DisclosureLevel.DETAILED:
-            enriched_item = _add_detailed_metadata(item, result_type, client)
-            enriched.append(enriched_item)
-        elif disclosure_level == DisclosureLevel.EXPLORATORY:
-            enriched_item = _add_exploratory_metadata(item, result_type, client)
-            enriched.append(enriched_item)
+    # Build type metadata ONCE at the response level (not per-item)
+    type_metadata = _build_type_metadata(result_type, disclosure_level)
 
-    # Apply pagination with automatic token limiting
+    # Apply pagination with automatic token limiting (items are NOT enriched per-item)
     paginated = paginate_response(
-        enriched,
+        results,
         offset=offset,
         limit=limit,
         include_token_estimate=True,
@@ -98,17 +130,16 @@ def enrich_results(
     final_results = paginated["results"]
     pagination_info = paginated["pagination"]
 
-    metadata = {"result_count": pagination_info.get("returned", len(final_results)), "result_type": result_type or "unknown"}
-    if result_type and result_type in ENTITY_DESCRIPTIONS:
-        metadata["result_type_hint"] = ENTITY_DESCRIPTIONS[result_type]
-
     response = {
         "results": final_results,
         "disclosure_level": disclosure_level.value,
-        "metadata": metadata,
+        "result_type": result_type or "unknown",
         "pagination": pagination_info,
-        "token_estimate": pagination_info.get("token_estimate", estimate_tokens(final_results))
+        "token_estimate": pagination_info.get("token_estimate", estimate_tokens(final_results)),
     }
+
+    if type_metadata:
+        response["_type_metadata"] = type_metadata
 
     # Add continuation hint if there's more data
     if pagination_info.get("has_more"):

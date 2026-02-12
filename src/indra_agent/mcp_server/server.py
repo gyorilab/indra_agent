@@ -32,6 +32,12 @@ from indra_agent.mcp_server.enrichment import enrich_results, DisclosureLevel
 from indra_agent.mcp_server.schema_discovery import get_graph_schema
 from indra_agent.mcp_server.query_execution import execute_cypher
 from indra_agent.mcp_server.validation import validate_cypher
+from indra_agent.mcp_server.cache import cache as _cache, make_key
+
+
+def compact_json(obj: Any) -> str:
+    """Serialize to compact JSON for token efficiency."""
+    return json.dumps(obj, separators=(',', ':'), default=str)
 
 logger = logging.getLogger(__name__)
 
@@ -224,6 +230,20 @@ async def get_graph_schema_tool(params: GetGraphSchemaInput) -> str:
     :
         JSON with schema metadata at requested detail level
     """
+    _SCHEMA_TTL = 86400  # 24 hours — schema changes are rare
+
+    cache_key = make_key("schema", params.detail_level, params.entity_type, params.relationship_type)
+
+    # Check cache first
+    try:
+        cached = await asyncio.to_thread(_cache.get, cache_key)
+    except Exception:
+        cached = None
+
+    if cached is not None:
+        logger.debug("Schema cache hit for %s", cache_key)
+        return compact_json(cached)
+
     try:
         # Add 60 second timeout to prevent hangs on expensive queries
         result = await asyncio.wait_for(
@@ -236,16 +256,25 @@ async def get_graph_schema_tool(params: GetGraphSchemaInput) -> str:
             ),
             timeout=60.0
         )
-        return json.dumps(result, indent=2)
+
+        # Cache the result with long TTL
+        try:
+            await asyncio.to_thread(
+                lambda: _cache.set(cache_key, result, expire=_SCHEMA_TTL, tag="schema")
+            )
+        except Exception:
+            logger.debug("Schema cache write failed for %s", cache_key)
+
+        return compact_json(result)
     except asyncio.TimeoutError:
         logger.error("Schema discovery timed out after 60 seconds")
-        return json.dumps({
+        return compact_json({
             "error": "Schema discovery timed out after 60 seconds",
             "hint": "Try a simpler detail_level like 'summary' or filter by entity_type/relationship_type"
-        }, indent=2)
+        })
     except Exception as e:
         logger.error(f"Schema discovery failed: {e}", exc_info=True)
-        return json.dumps({"error": f"Schema discovery failed: {str(e)}"}, indent=2)
+        return compact_json({"error": f"Schema discovery failed: {str(e)}"})
 
 
 # ============================================================================
@@ -264,6 +293,8 @@ async def execute_cypher_tool(params: ExecuteCypherInput) -> str:
     :
         JSON with query results or error information
     """
+    # NOTE: BioEntity IDs in Neo4j use lowercase namespace prefixes
+    # (e.g., "hgnc:11179" not "HGNC:11179"). Use norm_id() conventions.
     try:
         # Validate query if requested
         if params.validate_first:
@@ -273,10 +304,10 @@ async def execute_cypher_tool(params: ExecuteCypherInput) -> str:
                 parameters=params.parameters
             )
             if not validation.get("valid", False):
-                return json.dumps({
+                return compact_json({
                     "error": "Query validation failed",
                     "validation": validation
-                }, indent=2)
+                })
 
         # Execute query with pagination
         result = await asyncio.to_thread(
@@ -290,11 +321,11 @@ async def execute_cypher_tool(params: ExecuteCypherInput) -> str:
             offset=params.offset,
             limit=params.limit,
         )
-        return json.dumps(result, indent=2)
+        return compact_json(result)
 
     except Exception as e:
         logger.error(f"Query execution failed: {e}", exc_info=True)
-        return json.dumps({"error": f"Query execution failed: {str(e)}"}, indent=2)
+        return compact_json({"error": f"Query execution failed: {str(e)}"})
 
 
 # ============================================================================
@@ -319,10 +350,10 @@ async def validate_cypher_tool(params: ValidateCypherInput) -> str:
             query=params.query,
             parameters=params.parameters
         )
-        return json.dumps(result, indent=2)
+        return compact_json(result)
     except Exception as e:
         logger.error(f"Query validation failed: {e}", exc_info=True)
-        return json.dumps({"error": f"Validation failed: {str(e)}"}, indent=2)
+        return compact_json({"error": f"Validation failed: {str(e)}"})
 
 
 # ============================================================================
@@ -345,10 +376,10 @@ async def enrich_results_tool(params: EnrichResultsInput) -> str:
         try:
             disclosure_level = DisclosureLevel(params.disclosure_level)
         except ValueError:
-            return json.dumps({
+            return compact_json({
                 "error": f"Invalid disclosure_level '{params.disclosure_level}'",
                 "valid_levels": ["minimal", "standard", "detailed", "exploratory"]
-            }, indent=2)
+            })
 
         result = await asyncio.to_thread(
             enrich_results,
@@ -359,11 +390,11 @@ async def enrich_results_tool(params: EnrichResultsInput) -> str:
             offset=params.offset,
             limit=params.limit,
         )
-        return json.dumps(result, indent=2)
+        return compact_json(result)
 
     except Exception as e:
         logger.error(f"Result enrichment failed: {e}", exc_info=True)
-        return json.dumps({"error": f"Enrichment failed: {str(e)}"}, indent=2)
+        return compact_json({"error": f"Enrichment failed: {str(e)}"})
 
 
 # ============================================================================
@@ -453,5 +484,10 @@ class MCPLandingPageMiddleware(BaseHTTPMiddleware):
 
 # Wrap the base app with middleware to handle /mcp GET requests
 app = MCPLandingPageMiddleware(_base_app)
+
+# Ensure diskcache is flushed on worker shutdown (gunicorn SIGTERM, etc.)
+import atexit
+atexit.register(lambda: _cache.close()  # type: ignore[union-attr]
+                if _cache is not None else None)
 
 __all__ = ['mcp', 'get_client', 'app']

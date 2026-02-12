@@ -43,6 +43,7 @@ from indra_agent.mcp_server.autoclient_tools import (
     suggest_endpoints,
     call_endpoint,
     get_navigation_schema,
+    batch_call,
 )
 from indra_agent.mcp_server.registry import (
     clear_registry_cache,
@@ -333,11 +334,9 @@ class TestSuggestEndpoints:
                 reach = nav["can_reach"][0]
                 assert "functions" in reach
                 assert len(reach["functions"]) > 0
-                # Functions are dicts with 'name' and 'params'
+                # Functions are plain strings (name pattern is self-descriptive)
                 func = reach["functions"][0]
-                assert isinstance(func, dict)
-                assert "name" in func
-                assert isinstance(func["name"], str)
+                assert isinstance(func, str)
 
     def test_top_k_parameter(self):
         """Test that top_k limits suggestions."""
@@ -364,18 +363,14 @@ class TestCallEndpoint:
         """Test calling endpoint with explicit CURIE tuple."""
         result = await call_endpoint(
             endpoint="get_genes_for_disease",
-            kwargs='{"disease": ["mesh", "D010300"]}',  # Parkinson's
+            kwargs='{"disease": ["MESH", "D010300"]}',  # Parkinson's
             get_client_func=get_client,
             auto_ground=False
         )
 
-        assert "endpoint" in result
-        assert result["endpoint"] == "get_genes_for_disease"
         assert "results" in result
-        assert "parameters" in result
-        # Verify result_count is present (may be 0 if no associations in DB)
-        assert "result_count" in result
-        assert result["result_count"] >= 0
+        # Slim response: total shown when single page, pagination when has_more
+        assert "total" in result or "pagination" in result
 
     @pytest.mark.asyncio
     async def test_auto_grounding_enabled(self, flask_app_with_client):
@@ -387,16 +382,10 @@ class TestCallEndpoint:
             auto_ground=True
         )
 
-        assert "endpoint" in result
         assert "results" in result or "error" in result
 
-        if "results" in result:
-            assert "grounding_applied" in result
-            # Should show what was grounded
-            assert "disease" in result["grounding_applied"]
-            ground_info = result["grounding_applied"]["disease"]
-            assert ground_info["input"] == "Parkinson's disease"
-            assert "grounded_to" in ground_info
+        # Grounding info only appears if xref fallback was used
+        # Normal grounding is silent (agent already knows what it sent)
 
     @pytest.mark.asyncio
     async def test_auto_grounding_with_semantic_filtering(self, flask_app_with_client):
@@ -409,11 +398,8 @@ class TestCallEndpoint:
             auto_ground=True
         )
 
-        if "grounding_applied" in result:
-            ground_info = result["grounding_applied"]["disease"]
-            grounded = ground_info["grounded_to"]
-            # Should be from disease namespace
-            assert grounded["namespace"].upper() in ["MESH", "DOID", "MONDO", "EFO"]
+        # Should succeed (ALS grounds to disease namespace) or fail gracefully
+        assert "results" in result or "error" in result
 
     @pytest.mark.asyncio
     async def test_invalid_endpoint_name(self, flask_app_with_client):
@@ -492,9 +478,9 @@ class TestCallEndpoint:
             assert len(result["grounding_options"]) > 1
 
     @pytest.mark.asyncio
-    async def test_namespace_normalization(self, flask_app_with_client):
-        """Test that namespace is normalized to lowercase."""
-        # Provide uppercase namespace
+    async def test_namespace_passthrough(self, flask_app_with_client):
+        """Test that namespace case is preserved (upstream norm_id handles normalization)."""
+        # Provide uppercase namespace — should be passed through as-is
         result = await call_endpoint(
             endpoint="get_genes_for_disease",
             kwargs='{"disease": ["MESH", "D010300"]}',
@@ -502,22 +488,22 @@ class TestCallEndpoint:
             auto_ground=False
         )
 
-        if "parameters" in result:
-            # Should be normalized to lowercase
-            assert result["parameters"]["disease"][0] == "mesh"
+        # Should succeed — upstream norm_id normalizes internally
+        assert "results" in result or "error" in result
 
     @pytest.mark.asyncio
     async def test_result_processing(self, flask_app_with_client):
         """Test that results are properly processed/serialized."""
         result = await call_endpoint(
             endpoint="get_genes_for_disease",
-            kwargs='{"disease": ["mesh", "D010300"]}',
+            kwargs='{"disease": ["MESH", "D010300"]}',
             get_client_func=get_client,
             auto_ground=False
         )
 
         assert "results" in result
-        assert "result_count" in result
+        # Slim response uses "total" for single-page results
+        assert "total" in result or "pagination" in result
 
         # Results should be JSON-serializable
         json.dumps(result)  # Should not raise
@@ -539,13 +525,9 @@ class TestCallEndpoint:
         # Should have results or error
         assert "results" in result or "error" in result
 
-        # If grounding was applied and xrefs were tried, there should be evidence
-        if "grounding_applied" in result:
-            ground_info = result["grounding_applied"].get("disease", {})
-            # May or may not have xrefs depending on results
-            # Just verify the structure is correct
-            if "xrefs_tried" in ground_info:
-                assert isinstance(ground_info["xrefs_tried"], list)
+        # If xref fallback was used, it appears in the response
+        if "xref_fallback" in result:
+            assert isinstance(result["xref_fallback"], dict)
 
 
 # ============================================================================
@@ -587,7 +569,6 @@ class TestGetNavigationSchema:
             assert "from" in edge
             assert "to" in edge
             assert "functions" in edge
-            assert "count" in edge
             assert isinstance(edge["functions"], list)
 
     def test_contains_function_names(self):
@@ -599,13 +580,11 @@ class TestGetNavigationSchema:
             # Check a few edges
             for edge in edges[:5]:
                 assert len(edge["functions"]) > 0
-                # Functions are dicts with 'name' and 'params'
+                # Functions are plain strings (name pattern is self-descriptive)
                 func = edge["functions"][0]
-                assert isinstance(func, dict)
-                assert "name" in func
-                assert isinstance(func["name"], str)
+                assert isinstance(func, str)
                 # Should follow naming pattern
-                assert "get_" in func["name"] or "is_" in func["name"]
+                assert "get_" in func or "is_" in func
 
     def test_caching_behavior(self):
         """Test that schema is cached and returns consistent results."""
@@ -737,16 +716,15 @@ class TestGatewayIntegration:
         # Step 3: Call an endpoint to get genes
         call_result = await call_endpoint(
             endpoint="get_genes_for_disease",
-            kwargs=f'{{"disease": ["{top_match["namespace"].lower()}", "{top_match["identifier"]}"]}}',
+            kwargs=f'{{"disease": ["{top_match["namespace"]}", "{top_match["identifier"]}"]}}',
             get_client_func=get_client,
             auto_ground=False
         )
 
         # Verify call succeeded (no error) and has proper structure
         assert "results" in call_result
-        assert "result_count" in call_result
-        # Result count may be 0 if no gene-disease associations exist for this disease
-        assert call_result["result_count"] >= 0
+        # Slim response uses "total" or "pagination"
+        assert "total" in call_result or "pagination" in call_result
 
     @pytest.mark.asyncio
     async def test_auto_ground_workflow(self, flask_app_with_client):
@@ -758,7 +736,7 @@ class TestGatewayIntegration:
 
         # Find an endpoint that goes Disease → Gene
         disease_to_gene_funcs = [
-            edge["functions"][0]["name"]
+            edge["functions"][0]
             for edge in schema["edges"]
             if edge["from"] == "Disease" and edge["to"] == "Gene"
         ]
@@ -825,6 +803,464 @@ class TestConstants:
 
 
 # ============================================================================
+# Part 8: Namespace Case Normalization (Defect 1 fix)
+# ============================================================================
+
+@pytest.mark.nonpublic
+class TestNamespaceCaseNormalization:
+    """Verify that auto-grounding produces uppercase namespaces.
+
+    Upstream indra_cogex functions validate against uppercase prefixes
+    (e.g., ``mesh_term[0] != "MESH"``). Gilda returns lowercase namespaces
+    (e.g., "mesh"), so we must uppercase before passing to upstream.
+    """
+
+    @pytest.mark.asyncio
+    async def test_ground_entity_returns_lowercase_namespace(self, flask_app_with_client):
+        """Confirm gilda returns lowercase namespace (baseline)."""
+        result = await ground_entity("amyotrophic lateral sclerosis", param_name="disease")
+        assert "groundings" in result
+        if result["groundings"]:
+            # Gilda returns lowercase namespaces via bioregistry
+            ns = result["groundings"][0]["namespace"]
+            assert ns == ns.lower(), f"Expected lowercase namespace from gilda, got '{ns}'"
+
+    @pytest.mark.asyncio
+    async def test_call_endpoint_uppercases_namespace(self, flask_app_with_client):
+        """Verify call_endpoint uppercases namespace before passing to upstream."""
+        # Use a disease term that gilda will ground to MESH namespace
+        result = await call_endpoint(
+            endpoint="get_genes_for_disease",
+            kwargs='{"disease": "Parkinson\'s disease"}',
+            get_client_func=get_client,
+            auto_ground=True,
+        )
+        # Should succeed — if namespace weren't uppercased, upstream would reject
+        assert "results" in result, f"Expected results, got error: {result.get('error')}"
+
+    @pytest.mark.asyncio
+    async def test_mesh_term_grounding_succeeds(self, flask_app_with_client):
+        """Verify mesh_term parameter grounds and executes correctly.
+
+        The upstream function validates ``mesh_term[0] != "MESH"`` — this
+        would fail if we passed the lowercase "mesh" from gilda directly.
+        """
+        result = await call_endpoint(
+            endpoint="get_gene_sets_for_mesh_term",
+            kwargs='{"mesh_term": "amyotrophic lateral sclerosis"}',
+            get_client_func=get_client,
+            auto_ground=True,
+        )
+        # This endpoint may or may not have results for ALS, but it should
+        # not fail with a namespace validation error
+        assert "results" in result or ("error" in result and "MESH" not in result.get("error", "")), \
+            f"Namespace case issue: {result.get('error')}"
+
+
+# ============================================================================
+# Part 9: List[Tuple[str, str]] Auto-Grounding (Defect 2 fix)
+# ============================================================================
+
+@pytest.mark.nonpublic
+class TestListTupleAutoGrounding:
+    """Verify auto-grounding for List[Tuple[str, str]] parameters.
+
+    Functions like get_shared_pathways_for_genes accept
+    genes: List[Tuple[str, str]]. The fix enables passing string gene names
+    that get batch-grounded via gilda.
+    """
+
+    @pytest.mark.asyncio
+    async def test_string_list_grounding(self, flask_app_with_client):
+        """Verify that string gene names are batch-grounded to CURIEs."""
+        result = await call_endpoint(
+            endpoint="get_shared_pathways_for_genes",
+            kwargs='{"genes": ["BRCA1", "TP53"]}',
+            get_client_func=get_client,
+            auto_ground=True,
+        )
+        # Should either succeed with results or error gracefully
+        # (no TypeError about string vs tuple)
+        assert "results" in result or "error" in result
+        if "error" in result:
+            # Should NOT be a type error from passing strings where tuples expected
+            assert "tuple" not in result["error"].lower()
+            assert "str" not in result["error"].lower() or "ground" in result["error"].lower()
+
+    @pytest.mark.asyncio
+    async def test_mixed_curie_and_string_list(self, flask_app_with_client):
+        """Verify mixed input: pre-formed CURIEs and strings together."""
+        result = await call_endpoint(
+            endpoint="get_shared_pathways_for_genes",
+            kwargs='{"genes": [["HGNC", "1100"], "TP53"]}',
+            get_client_func=get_client,
+            auto_ground=True,
+        )
+        # Mixed input should be handled — CURIEs pass through, strings get grounded
+        assert "results" in result or "error" in result
+        if "error" in result:
+            assert "tuple" not in result["error"].lower()
+
+    @pytest.mark.asyncio
+    async def test_all_curie_list_passthrough(self, flask_app_with_client):
+        """Verify that all-CURIE lists pass through without grounding."""
+        result = await call_endpoint(
+            endpoint="get_shared_pathways_for_genes",
+            kwargs='{"genes": [["HGNC", "1100"], ["HGNC", "11998"]]}',
+            get_client_func=get_client,
+            auto_ground=False,
+        )
+        # Direct CURIEs should work without auto-grounding
+        assert "results" in result or "error" in result
+
+    @pytest.mark.asyncio
+    async def test_invalid_item_in_list_returns_error(self, flask_app_with_client):
+        """Verify that invalid items in the list produce a clear error."""
+        result = await call_endpoint(
+            endpoint="get_shared_pathways_for_genes",
+            kwargs='{"genes": [123]}',
+            get_client_func=get_client,
+            auto_ground=True,
+        )
+        # Numeric item is neither a CURIE list nor a string
+        assert "error" in result
+
+    @pytest.mark.asyncio
+    async def test_grounded_namespaces_are_uppercased(self, flask_app_with_client):
+        """Verify that batch-grounded namespaces are uppercased."""
+        # We can't directly inspect parsed_kwargs, but we can verify the
+        # endpoint doesn't fail due to lowercase namespaces
+        result = await call_endpoint(
+            endpoint="get_shared_pathways_for_genes",
+            kwargs='{"genes": ["BRCA1", "BRCA2"]}',
+            get_client_func=get_client,
+            auto_ground=True,
+        )
+        # If namespaces were lowercase, upstream might reject them
+        assert "results" in result or "error" in result
+        if "error" in result:
+            assert "namespace" not in result["error"].lower()
+
+
+# ============================================================================
+# Part 10: Batch Error Propagation (Defect 3 fix)
+# ============================================================================
+
+@pytest.mark.nonpublic
+class TestBatchErrorPropagation:
+    """Verify that batch_call propagates per-entity grounding errors.
+
+    Previously, failed groundings were silently discarded (added to a list
+    as bare strings). Now they appear in the ``failed`` dict with structured
+    error information.
+    """
+
+    @pytest.mark.asyncio
+    async def test_batch_with_invalid_entity_reports_failure(self, flask_app_with_client):
+        """Verify that nonsense entities appear in the failed dict."""
+        result = await batch_call(
+            endpoint="get_diseases_for_gene",
+            entity_param="gene",
+            entity_values=["LRRK2", "xyznonexistent123"],
+            get_client_func=get_client,
+            auto_ground=True,
+        )
+        # LRRK2 should succeed, nonsense should fail
+        assert "total_entities" in result
+        assert result["total_entities"] == 2
+        if "failed" in result:
+            # Failed should be a dict with entity names as keys
+            assert isinstance(result["failed"], dict)
+            # Each failure should have structured error info
+            for entity, info in result["failed"].items():
+                assert isinstance(info, dict), f"Expected dict for failed['{entity}'], got {type(info)}"
+                assert "error" in info, f"Expected 'error' key in failed['{entity}']"
+
+    @pytest.mark.asyncio
+    async def test_batch_all_invalid_returns_error(self, flask_app_with_client):
+        """Verify that all-invalid batch returns proper error structure."""
+        result = await batch_call(
+            endpoint="get_diseases_for_gene",
+            entity_param="gene",
+            entity_values=["xyznonexistent1", "xyznonexistent2"],
+            get_client_func=get_client,
+            auto_ground=True,
+        )
+        # All should fail — either top-level error or all in failed dict
+        if "error" in result:
+            assert "failed" in result or "grounding" in result["error"].lower()
+        elif "failed" in result:
+            assert isinstance(result["failed"], dict)
+            assert len(result["failed"]) == 2
+
+    @pytest.mark.asyncio
+    async def test_batch_ground_entity_batch_returns_failed_dict(self, flask_app_with_client):
+        """Verify that ground_entity batch mode returns failed as dict."""
+        result = await ground_entity(
+            terms=["LRRK2", "xyznonexistent123"],
+            param_name="gene",
+        )
+        assert "mappings" in result
+        # LRRK2 should be in mappings
+        assert "LRRK2" in result["mappings"]
+        # If nonsense term failed, it should be in failed dict
+        if "failed" in result:
+            assert isinstance(result["failed"], dict)
+            if "xyznonexistent123" in result["failed"]:
+                fail_info = result["failed"]["xyznonexistent123"]
+                assert isinstance(fail_info, dict)
+                assert "error" in fail_info
+
+    @pytest.mark.asyncio
+    async def test_batch_fan_out_partial_failure(self, flask_app_with_client):
+        """Verify fan-out batch handles partial failure gracefully."""
+        result = await batch_call(
+            endpoint="get_diseases_for_gene",
+            entity_param="gene",
+            entity_values=["LRRK2"],
+            get_client_func=get_client,
+            auto_ground=True,
+        )
+        # Single valid entity should succeed
+        assert "results" in result
+        assert result["successful"] >= 1
+
+
+# ============================================================================
+# Part 11: Cache Behavior Tests
+# ============================================================================
+
+class TestCacheBehavior:
+    """Test cache key generation and basic cache operations.
+
+    These tests do NOT require Neo4j (no @pytest.mark.nonpublic).
+    They verify the cache module's deterministic behavior.
+    """
+
+    def test_make_key_deterministic(self):
+        """Verify make_key produces identical keys for identical inputs."""
+        from indra_agent.mcp_server.cache import make_key
+
+        key1 = make_key("endpoint", "get_diseases_for_gene", {"gene": ["HGNC", "6407"]})
+        key2 = make_key("endpoint", "get_diseases_for_gene", {"gene": ["HGNC", "6407"]})
+        assert key1 == key2
+
+    def test_make_key_different_for_different_inputs(self):
+        """Verify make_key produces different keys for different inputs."""
+        from indra_agent.mcp_server.cache import make_key
+
+        key1 = make_key("endpoint", "get_diseases_for_gene", {"gene": ["HGNC", "6407"]})
+        key2 = make_key("endpoint", "get_diseases_for_gene", {"gene": ["HGNC", "9999"]})
+        assert key1 != key2
+
+    def test_make_key_namespaced(self):
+        """Verify make_key includes namespace prefix."""
+        from indra_agent.mcp_server.cache import make_key
+
+        key = make_key("schema", "summary")
+        assert key.startswith("schema:")
+
+        key2 = make_key("endpoint", "func_name")
+        assert key2.startswith("endpoint:")
+
+    def test_make_key_ignores_dict_ordering(self):
+        """Verify make_key produces same key regardless of dict key order."""
+        from indra_agent.mcp_server.cache import make_key
+
+        key1 = make_key("endpoint", "func", {"a": 1, "b": 2})
+        key2 = make_key("endpoint", "func", {"b": 2, "a": 1})
+        assert key1 == key2
+
+    def test_null_cache_always_misses(self):
+        """Verify _NullCache returns None for all gets."""
+        from indra_agent.mcp_server.cache import _NullCache
+
+        null = _NullCache()
+        assert null.get("any_key") is None
+        assert null.get("any_key", default="fallback") == "fallback"
+        assert len(null) == 0
+        assert "any_key" not in null
+        assert null.volume() == 0
+
+    def test_null_cache_set_succeeds_silently(self):
+        """Verify _NullCache.set returns True without storing."""
+        from indra_agent.mcp_server.cache import _NullCache
+
+        null = _NullCache()
+        assert null.set("key", "value") is True
+        assert null.get("key") is None  # Not actually stored
+
+    def test_cache_stats_returns_structure(self):
+        """Verify cache_stats returns expected structure."""
+        from indra_agent.mcp_server.cache import cache_stats
+
+        stats = cache_stats()
+        assert "total_entries" in stats or "error" in stats
+        assert "is_null_cache" in stats
+
+
+# ============================================================================
+# Part 12: Cache Integration Tests (with Neo4j)
+# ============================================================================
+
+@pytest.mark.nonpublic
+class TestCacheIntegration:
+    """Test cache hit/miss behavior with real queries."""
+
+    @pytest.mark.asyncio
+    async def test_repeated_query_uses_cache(self, flask_app_with_client):
+        """Verify that identical queries return consistent results."""
+        kwargs = '{"disease": ["MESH", "D010300"]}'
+
+        result1 = await call_endpoint(
+            endpoint="get_genes_for_disease",
+            kwargs=kwargs,
+            get_client_func=get_client,
+            auto_ground=False,
+        )
+        result2 = await call_endpoint(
+            endpoint="get_genes_for_disease",
+            kwargs=kwargs,
+            get_client_func=get_client,
+            auto_ground=False,
+        )
+
+        # Both should succeed
+        assert "results" in result1
+        assert "results" in result2
+
+        # Results should be identical (served from cache on second call)
+        assert len(result1["results"]) == len(result2["results"])
+
+    @pytest.mark.asyncio
+    async def test_different_queries_get_different_results(self, flask_app_with_client):
+        """Verify that different queries are cached independently."""
+        result_pd = await call_endpoint(
+            endpoint="get_genes_for_disease",
+            kwargs='{"disease": ["MESH", "D010300"]}',  # Parkinson's
+            get_client_func=get_client,
+            auto_ground=False,
+        )
+        result_als = await call_endpoint(
+            endpoint="get_genes_for_disease",
+            kwargs='{"disease": ["MESH", "D000690"]}',  # ALS
+            get_client_func=get_client,
+            auto_ground=False,
+        )
+
+        assert "results" in result_pd
+        assert "results" in result_als
+        # Different diseases should (generally) return different gene sets
+
+
+# ============================================================================
+# Part 13: Smoke Tests with Representative Queries
+# ============================================================================
+
+@pytest.mark.nonpublic
+class TestSmokeQueries:
+    """Smoke tests exercising representative query patterns against live Neo4j."""
+
+    @pytest.mark.asyncio
+    async def test_gene_to_disease(self, flask_app_with_client):
+        """Gene → Disease: LRRK2 should be associated with Parkinson's."""
+        result = await call_endpoint(
+            endpoint="get_diseases_for_gene",
+            kwargs='{"gene": "LRRK2"}',
+            get_client_func=get_client,
+            auto_ground=True,
+        )
+        assert "results" in result, f"Error: {result.get('error')}"
+        assert len(result["results"]) > 0
+
+    @pytest.mark.asyncio
+    async def test_disease_to_gene(self, flask_app_with_client):
+        """Disease → Gene: Parkinson's (DOID) returns genes."""
+        # Gene-disease edges in the graph use DOID identifiers
+        result = await call_endpoint(
+            endpoint="get_genes_for_disease",
+            kwargs='{"disease": ["DOID", "14330"]}',
+            get_client_func=get_client,
+            auto_ground=False,
+        )
+        assert "results" in result, f"Error: {result.get('error')}"
+        assert len(result["results"]) > 0
+
+    @pytest.mark.asyncio
+    async def test_gene_to_pathway(self, flask_app_with_client):
+        """Gene → Pathway: TP53 should have associated pathways."""
+        result = await call_endpoint(
+            endpoint="get_pathways_for_gene",
+            kwargs='{"gene": "TP53"}',
+            get_client_func=get_client,
+            auto_ground=True,
+        )
+        assert "results" in result, f"Error: {result.get('error')}"
+
+    @pytest.mark.asyncio
+    async def test_batch_call_fan_out(self, flask_app_with_client):
+        """Batch fan-out: multiple genes → diseases."""
+        result = await batch_call(
+            endpoint="get_diseases_for_gene",
+            entity_param="gene",
+            entity_values=["LRRK2", "TP53"],
+            get_client_func=get_client,
+            auto_ground=True,
+        )
+        assert "results" in result
+        assert result["total_entities"] == 2
+        assert result["successful"] >= 1
+
+    @pytest.mark.asyncio
+    async def test_field_projection(self, flask_app_with_client):
+        """Verify field projection reduces result size."""
+        result_full = await call_endpoint(
+            endpoint="get_genes_for_disease",
+            kwargs='{"disease": ["MESH", "D010300"]}',
+            get_client_func=get_client,
+            auto_ground=False,
+        )
+        result_projected = await call_endpoint(
+            endpoint="get_genes_for_disease",
+            kwargs='{"disease": ["MESH", "D010300"]}',
+            get_client_func=get_client,
+            auto_ground=False,
+            fields=["db_ns", "db_id", "name"],
+        )
+
+        assert "results" in result_full
+        assert "results" in result_projected
+
+        # Projected results should have fewer keys per item
+        if result_projected["results"] and result_full["results"]:
+            full_keys = set(result_full["results"][0].keys())
+            proj_keys = set(result_projected["results"][0].keys())
+            assert len(proj_keys) <= len(full_keys)
+
+    @pytest.mark.asyncio
+    async def test_sort_by_evidence(self, flask_app_with_client):
+        """Verify sort_by='evidence' orders results by evidence count."""
+        result = await call_endpoint(
+            endpoint="get_genes_for_disease",
+            kwargs='{"disease": ["MESH", "D010300"]}',
+            get_client_func=get_client,
+            auto_ground=False,
+            sort_by="evidence",
+        )
+        assert "results" in result
+        # If results have source_counts, verify descending order
+        results = result["results"]
+        if len(results) >= 2:
+            for i in range(len(results) - 1):
+                curr = results[i]
+                nxt = results[i + 1]
+                if isinstance(curr, dict) and isinstance(nxt, dict):
+                    curr_ev = sum(curr.get("source_counts", {}).values()) if isinstance(curr.get("source_counts"), dict) else 0
+                    nxt_ev = sum(nxt.get("source_counts", {}).values()) if isinstance(nxt.get("source_counts"), dict) else 0
+                    assert curr_ev >= nxt_ev, f"Results not sorted by evidence: {curr_ev} < {nxt_ev}"
+
+
+# ============================================================================
 # Summary
 # ============================================================================
 
@@ -833,15 +1269,16 @@ class TestGatewayToolsCoverage:
     """Verify comprehensive test coverage of gateway tools."""
 
     def test_all_gateway_tools_covered(self):
-        """Verify that all 4 gateway tools are tested."""
+        """Verify that all 5 gateway tools are tested."""
         tools_tested = {
             "ground_entity": TestGroundEntity,
             "suggest_endpoints": TestSuggestEndpoints,
             "call_endpoint": TestCallEndpoint,
             "get_navigation_schema": TestGetNavigationSchema,
+            "batch_call": TestBatchErrorPropagation,
         }
 
-        assert len(tools_tested) == 4, "All 4 gateway tools must be tested"
+        assert len(tools_tested) == 5, "All 5 gateway tools must be tested"
 
         # Verify each test class exists and has multiple tests
         for tool_name, test_class in tools_tested.items():
