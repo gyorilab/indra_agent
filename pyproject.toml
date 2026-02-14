@@ -45,6 +45,9 @@ dev = [
     "python-dotenv",
 ]
 
+[project.scripts]
+indra-agent = "indra_agent.mcp_server.__main__:main"
+
 [project.urls]
 Homepage = "https://github.com/gyorilab/indra_agent"
 Repository = "https://github.com/gyorilab/indra_agent"

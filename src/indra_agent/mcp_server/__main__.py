@@ -18,5 +18,10 @@ Neo4j credentials are read from environment variables:
 """
 from indra_agent.mcp_server.server import mcp
 
-if __name__ == "__main__":
+
+def main():
     mcp.run()
+
+
+if __name__ == "__main__":
+    main()
