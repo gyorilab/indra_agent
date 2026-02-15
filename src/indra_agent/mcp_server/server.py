@@ -5,11 +5,12 @@ Architecture:
 - Layer 2: Query Execution (execute_cypher)
 - Layer 3: Validation (validate_cypher)
 - Layer 4: Enrichment (enrich_results)
-- Layer 5: Gateway Tools (4 tools for graph navigation):
+- Layer 5: Gateway Tools (5 tools for graph navigation):
     - ground_entity: Natural language → CURIEs via GILDA
     - suggest_endpoints: Graph navigation suggestions
     - call_endpoint: Execute any autoclient function
     - get_navigation_schema: Full edge map for discovery
+    - batch_call: Execute endpoint for multiple entities in parallel
 """
 import asyncio
 import json
@@ -404,11 +405,12 @@ async def enrich_results_tool(params: EnrichResultsInput) -> str:
 def _register_gateway_tools():
     """Register gateway tools for graph navigation.
 
-    Exposes 4 tools instead of 100+ individual functions:
+    Exposes 5 tools instead of 100+ individual functions:
     1. ground_entity - Natural language → CURIEs
     2. suggest_endpoints - Graph navigation suggestions
     3. call_endpoint - Execute any autoclient function
     4. get_navigation_schema - Full edge map for discovery
+    5. batch_call - Execute endpoint for multiple entities in parallel
     """
     try:
         from indra_agent.mcp_server.autoclient_tools import register_gateway_tools
