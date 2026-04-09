@@ -22,7 +22,38 @@ WORKFLOWS = {"gene": ["Disease research: gene → pathways → diseases (find di
 COMMON_QUERIES = {"gene": ["Find diseases associated with gene", "Find pathways containing gene", "Find drugs targeting gene"], "disease": ["Find genes associated with disease", "Find drugs treating disease", "Find disease phenotypes"], "drug": ["Find drug targets", "Find drug indications", "Find drug side effects"], "pathway": ["Find pathway genes", "Find diseases involving pathway"]}
 RELATED_FIELDS = {"gene": ["genomics", "proteomics", "systems biology"], "disease": ["clinical research", "epidemiology", "precision medicine"], "drug": ["pharmacology", "drug discovery", "toxicology"], "pathway": ["systems biology", "molecular biology", "biochemistry"]}
 
-__all__ = ["DisclosureLevel", "enrich_results"]
+__all__ = ["DisclosureLevel", "enrich_results", "build_type_metadata"]
+
+
+def build_type_metadata(
+    results: list,
+    disclosure_level: "DisclosureLevel | str",
+) -> Optional[dict]:
+    """Build envelope-level type metadata for a result set.
+
+    Public wrapper that infers the result type from the first item and
+    builds the corresponding type metadata block. Used by call_endpoint
+    to attach _type_metadata without double-paginating through enrich_results.
+
+    Parameters
+    ----------
+    results : list
+        Query results (list of dicts with db_ns/db_id or id fields).
+    disclosure_level : DisclosureLevel or str
+        Metadata verbosity level.
+
+    Returns
+    -------
+    dict or None
+        Type metadata block, or None if no type could be inferred or
+        disclosure_level is MINIMAL.
+    """
+    if isinstance(disclosure_level, str):
+        disclosure_level = DisclosureLevel(disclosure_level)
+    if not results:
+        return None
+    result_type = _infer_result_type(results)
+    return _build_type_metadata(result_type, disclosure_level)
 
 
 class DisclosureLevel(str, Enum):
