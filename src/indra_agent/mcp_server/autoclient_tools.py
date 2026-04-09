@@ -33,7 +33,10 @@ from indra_agent.mcp_server.mappings import (
 )
 from indra_agent.mcp_server.registry import _get_registry, _get_capability_index, clear_registry_cache
 from indra_agent.mcp_server.serialization import process_result, resolve_entity_names
-from indra_agent.mcp_server.pagination import paginate_response, estimate_tokens
+from indra_agent.mcp_server.formats import stable_key_union, render_text
+from indra_agent.mcp_server.pagination import (
+    paginate_response, estimate_tokens,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -332,18 +335,28 @@ async def call_endpoint(
     limit : int, optional
         Maximum items to return per page. If response exceeds ~20k tokens,
         it will be automatically truncated with has_more=True.
+    fields : list of str, optional
+        Project results to only these keys. Reduces token usage and locks
+        the column schema for the renderer.
+    estimate : bool
+        If True, return only metadata about the cached result set
+        (count, available fields, sample) without the full payload.
     sort_by : str, optional
         Sort results before pagination. Options:
         - "evidence": Descending by source_counts sum (most-validated first)
         - "name": Alphabetical by entity name
         Default: None (preserve query order).
+    include_navigation : bool
+        If True, attach `suggested_next` navigation hints to the response.
 
     Returns
     -------
     :
-        Dict with endpoint, parameters, results, result_count, pagination,
-        and optionally grounding_applied, enrichment, or error fields.
-        If has_more=True in pagination, call again with next_offset to continue.
+        Dict with `results` (list of items), and optionally `pagination`
+        or `total`, `_columns` (stable column schema for the renderer),
+        `suggested_next`, `enrichment`, `_type_metadata`, `xref_fallback`,
+        or `error`. If `has_more=True` in pagination, call again with
+        `next_offset` to continue.
     """
     registry, func_mapping, _ = _get_registry()
 
@@ -632,6 +645,12 @@ async def call_endpoint(
                 # Always clean up to prevent memory leaks
                 _inflight.pop(result_id, None)
 
+        # Defensive copy: cached/in-flight results may be shared across
+        # coalesced requests. All downstream operations (estimate, sort,
+        # project, format) must not mutate the shared reference.
+        if isinstance(processed, list):
+            processed = list(processed)
+
         # Estimate mode: return metadata only, results stay server-side
         if estimate and isinstance(processed, list):
             fields_available = set()
@@ -672,24 +691,19 @@ async def call_endpoint(
                 if isinstance(item, dict)
             ]
 
-        # Optionally apply enrichment if disclosure_level specified
+        # Optionally apply enrichment metadata if disclosure_level specified.
+        # We call build_type_metadata (public wrapper) instead of enrich_results()
+        # to avoid double-pagination: enrich_results has its own paginate_response
+        # call, but call_endpoint already paginates below. This also preserves
+        # _type_metadata in the response envelope instead of dropping it.
         enrichment_info = None
+        type_metadata = None
         if disclosure_level and disclosure_level != "minimal":
             try:
-                from indra_agent.mcp_server.enrichment import enrich_results, DisclosureLevel
+                from indra_agent.mcp_server.enrichment import build_type_metadata
                 if isinstance(processed, list) and processed:
-                    enrichment_result = await asyncio.to_thread(
-                        enrich_results,
-                        results=processed,
-                        disclosure_level=DisclosureLevel(disclosure_level),
-                        result_type=None,  # Auto-detect from results
-                        client=client,
-                    )
-                    processed = enrichment_result["results"]
-                    enrichment_info = {
-                        "disclosure_level": disclosure_level,
-                        "token_estimate": enrichment_result["token_estimate"],
-                    }
+                    type_metadata = build_type_metadata(processed, disclosure_level)
+                    enrichment_info = {"disclosure_level": disclosure_level}
             except ValueError as e:
                 logger.warning(f"Invalid disclosure_level '{disclosure_level}': {e}")
             except Exception as e:
@@ -740,10 +754,17 @@ async def call_endpoint(
                 "token_estimate": estimate_tokens(processed),
             }
 
-        # Build slim response — don't echo endpoint/parameters (agent already knows)
-        response = {
-            "results": final_results,
-        }
+        # Build response — always carries results as list/dict (raw data).
+        # Format rendering happens at the tool wrapper level via render_text().
+        response: Dict[str, Any] = {"results": final_results}
+
+        # Attach stable column schema for the renderer (derived from full
+        # cached list, not per-page, so format is consistent across offsets)
+        if isinstance(final_results, list) and final_results:
+            if fields:
+                response["_columns"] = list(fields)
+            elif isinstance(processed, list):
+                response["_columns"] = stable_key_union(processed)
 
         # Collapse pagination when trivial (single page)
         if pagination_info.get("has_more"):
@@ -754,7 +775,6 @@ async def call_endpoint(
         if suggested_next:
             response["suggested_next"] = suggested_next
 
-        # Only report grounding when xref fallback was used (unexpected resolution)
         if grounding_info:
             xref_fallbacks = {k: v for k, v in grounding_info.items() if v.get("xref_used")}
             if xref_fallbacks:
@@ -762,6 +782,8 @@ async def call_endpoint(
 
         if enrichment_info:
             response["enrichment"] = enrichment_info
+        if type_metadata:
+            response["_type_metadata"] = type_metadata
 
         return response
 
@@ -836,6 +858,7 @@ async def batch_call(
             return await _batch_call_native(
                 native_batch, batch_param_name, entity_param, entity_values,
                 parsed_common, get_client_func, auto_ground, fields,
+                merge_strategy=merge_strategy,
             )
 
     # FAN-OUT PATH: N parallel call_endpoint invocations
@@ -885,8 +908,10 @@ async def batch_call(
                     results.setdefault("_flat", []).append(items)
                     total_results += 1
 
+    merged = results.get("_flat", []) if merge_strategy == "flat" else results
+
     response: Dict[str, Any] = {
-        "results": results.get("_flat", []) if merge_strategy == "flat" else results,
+        "results": merged,
         "total_entities": len(entity_values),
         "successful": len(entity_values) - len(failed),
         "total_results": total_results,
@@ -895,6 +920,73 @@ async def batch_call(
         response["failed"] = failed
 
     return response
+
+
+def _rekey_native_batch_results(
+    processed: Any,
+    grounded_entities: List[Tuple[str, List[str]]],
+) -> Dict[str, List[Any]]:
+    """Re-key upstream native batch results to user input strings.
+
+    Native upstream functions return Mapping[str, Iterable] keyed by
+    normalized CURIE (e.g. "hgnc:6407") and omit zero-hit inputs entirely.
+    This helper:
+
+    - Initializes a result bucket per grounded user input (preserves zero-hits)
+    - Maps upstream CURIE keys back to the original user input string(s)
+    - Distributes the same upstream rows to ALL aliases that grounded to the
+      same CURIE (e.g. "LRRK2" and "PARK8" both → hgnc:6407)
+    - Falls back to the upstream key as-is for any unknown CURIE
+    - Handles non-dict upstream returns (rare) by bucketing under "_native_flat"
+
+    Pure function — no I/O, no client dependency. Easy to unit-test.
+
+    Parameters
+    ----------
+    processed : Any
+        Upstream native batch result after process_result(). Typically a dict
+        keyed by CURIE; may be a list for some endpoints.
+    grounded_entities : List[Tuple[str, List[str]]]
+        List of (user_input, [namespace, identifier]) pairs from grounding.
+
+    Returns
+    -------
+    Dict[str, List[Any]]
+        Map of user_input → list of result items.
+    """
+    # Build CURIE -> [user_inputs] map (one-to-many to support aliases).
+    # Register both lowercase and original-case CURIE keys because upstream
+    # uses norm_id() which lowercases the namespace prefix.
+    curie_to_inputs: Dict[str, List[str]] = {}
+    for user_input, (ns, id_) in grounded_entities:
+        curie_to_inputs.setdefault(f"{ns.lower()}:{id_}", []).append(user_input)
+        curie_to_inputs.setdefault(f"{ns}:{id_}", []).append(user_input)
+
+    # Initialize all grounded inputs as empty lists (preserves zero-hit inputs).
+    keyed_results: Dict[str, List[Any]] = {
+        user_input: [] for user_input, _ in grounded_entities
+    }
+
+    if isinstance(processed, dict):
+        for upstream_key, items in processed.items():
+            if not isinstance(items, list):
+                items = [items] if items is not None else []
+            # Deduplicate user inputs that registered under both case variants
+            user_inputs = list(dict.fromkeys(
+                curie_to_inputs.get(str(upstream_key), [])
+            ))
+            if not user_inputs:
+                fallback = str(upstream_key)
+                keyed_results.setdefault(fallback, [])
+                user_inputs = [fallback]
+            for ui in user_inputs:
+                keyed_results[ui].extend(items)
+    elif isinstance(processed, list):
+        # Some native functions return a flat list — bucket under a synthetic
+        # key since we have no per-row source attribution.
+        keyed_results["_native_flat"] = processed
+
+    return keyed_results
 
 
 async def _batch_call_native(
@@ -906,12 +998,19 @@ async def _batch_call_native(
     get_client_func: Callable,
     auto_ground: bool,
     fields: Optional[List[str]],
+    merge_strategy: str = "keyed",
 ) -> Dict[str, Any]:
     """Route to native batch variant (single WHERE IN query).
 
     Native batch functions like get_drugs_for_targets accept
     List[Tuple[str,str]] instead of Tuple[str,str]. We ground all
     entities, then call the batch function once.
+
+    The native upstream functions return Mapping[str, Iterable[Agent]]
+    keyed by normalized CURIE (e.g. "hgnc:6407") and omit zero-hit inputs
+    entirely. This wrapper re-keys results back to the caller's original
+    input strings, preserves zero-hit inputs as empty lists, and supports
+    both "keyed" and "flat" merge strategies (matching the fan-out path).
 
     Parameters
     ----------
@@ -931,12 +1030,15 @@ async def _batch_call_native(
         Whether to auto-ground entity strings to CURIEs
     fields : list of str, optional
         Project results to only these keys per item
+    merge_strategy : str
+        "keyed" (default): {user_input: [rows]} dict (preserves source attribution)
+        "flat": single concatenated list of rows
 
     Returns
     -------
     :
         Dict with results, total_entities, successful, total_results,
-        batch_mode="native", and optionally failed dict.
+        batch_mode="native", and optionally failed dict for partial failures.
     """
     grounded_entities: List[Tuple[str, List[str]]] = []
     failed: Dict[str, Any] = {}
@@ -988,36 +1090,43 @@ async def _batch_call_native(
         result = await asyncio.to_thread(batch_func, client=client, **batch_kwargs)
         processed = process_result(result)
 
-        # Native batch functions return Mapping[str, Iterable[Agent]] — a dict
-        # keyed by entity string. Flatten to list for consistent downstream handling,
-        # or resolve names on each value list if dict.
-        if isinstance(processed, dict):
-            # Each value is a list of items for that entity
-            all_items = []
-            for entity_key, items in processed.items():
-                if isinstance(items, list):
-                    all_items.extend(items)
-                else:
-                    all_items.append(items)
-            processed = all_items
+        # Re-key upstream's CURIE-indexed result back to user input strings.
+        # Pure function — testable in isolation.
+        keyed_results = _rekey_native_batch_results(processed, grounded_entities)
 
-        # Resolve entity names from graph
-        if isinstance(processed, list) and processed:
-            processed = await asyncio.to_thread(resolve_entity_names, processed, client)
+        # Single-pass name resolution across all items (avoids N+1 lookups).
+        all_items: List[Any] = []
+        for items in keyed_results.values():
+            all_items.extend(items)
+        if all_items:
+            await asyncio.to_thread(resolve_entity_names, all_items, client)
+            # resolve_entity_names mutates dicts in place, so per-source lists
+            # already see the resolved names.
 
-        # Apply field projection if requested
-        if fields and isinstance(processed, list):
+        # Optional field projection per item
+        if fields:
             field_set = set(fields)
-            processed = [
-                {k: v for k, v in item.items() if k in field_set}
-                for item in processed if isinstance(item, dict)
-            ]
+            for k, items in list(keyed_results.items()):
+                keyed_results[k] = [
+                    {fk: v for fk, v in item.items() if fk in field_set}
+                    for item in items if isinstance(item, dict)
+                ]
+
+        total_results = sum(len(v) for v in keyed_results.values())
+
+        # Honor merge_strategy: keyed (default) returns dict, flat concatenates
+        if merge_strategy == "flat":
+            final_results: Any = []
+            for items in keyed_results.values():
+                final_results.extend(items)
+        else:
+            final_results = keyed_results
 
         response: Dict[str, Any] = {
-            "results": processed,
+            "results": final_results,
             "total_entities": len(entity_values),
             "successful": len(grounded_entities),
-            "total_results": len(processed) if isinstance(processed, list) else 1,
+            "total_results": total_results,
             "batch_mode": "native",
         }
         if failed:
@@ -1343,7 +1452,8 @@ def register_gateway_tools(mcp, get_client_func: Callable) -> int:
 
     @mcp.tool(
         name="ground_entity",
-        annotations={"title": "Ground Entity (GILDA)", "readOnlyHint": True}
+        annotations={"title": "Ground Entity (GILDA)", "readOnlyHint": True},
+        structured_output=False,
     )
     async def ground_entity_tool(
         term: Optional[str] = None,
@@ -1382,7 +1492,8 @@ def register_gateway_tools(mcp, get_client_func: Callable) -> int:
 
     @mcp.tool(
         name="suggest_endpoints",
-        annotations={"title": "Suggest Navigation", "readOnlyHint": True}
+        annotations={"title": "Suggest Navigation", "readOnlyHint": True},
+        structured_output=False,
     )
     async def suggest_endpoints_tool(
         entity_ids: List[str],
@@ -1408,7 +1519,8 @@ def register_gateway_tools(mcp, get_client_func: Callable) -> int:
 
     @mcp.tool(
         name="call_endpoint",
-        annotations={"title": "Call Endpoint", "readOnlyHint": True}
+        annotations={"title": "Call Endpoint", "readOnlyHint": True},
+        structured_output=False,
     )
     async def call_endpoint_tool(
         endpoint: str,
@@ -1423,6 +1535,10 @@ def register_gateway_tools(mcp, get_client_func: Callable) -> int:
         sort_by: Optional[str] = None,
     ) -> str:
         """Call any autoclient endpoint with optional auto-grounding.
+
+        Returns results as readable markdown. For small result sets,
+        each entity gets a heading with key-value details. For larger
+        sets, results are rendered as a markdown table.
 
         Parameters
         ----------
@@ -1444,7 +1560,9 @@ def register_gateway_tools(mcp, get_client_func: Callable) -> int:
             Starting offset for pagination (default: 0). Use next_offset
             from previous response to continue fetching.
         limit : int, optional
-            Max items per page. Responses are auto-truncated to ~20k tokens.
+            Max items per page. Truncation is applied based on a JSON-token
+            estimate (~20k); rendered markdown may run slightly larger but
+            stays under the 25k MCP limit.
         include_navigation : bool
             Include suggested next navigation steps (default: False).
             Set to True when exploring unfamiliar entity types.
@@ -1474,11 +1592,12 @@ def register_gateway_tools(mcp, get_client_func: Callable) -> int:
             include_navigation=include_navigation, fields=fields,
             estimate=estimate, sort_by=sort_by,
         )
-        return compact_json(result)
+        return render_text(result)
 
     @mcp.tool(
         name="get_navigation_schema",
-        annotations={"title": "Get Navigation Schema", "readOnlyHint": True}
+        annotations={"title": "Get Navigation Schema", "readOnlyHint": True},
+        structured_output=False,
     )
     async def get_navigation_schema_tool(
         entity_type: Optional[str] = None,
@@ -1499,7 +1618,8 @@ def register_gateway_tools(mcp, get_client_func: Callable) -> int:
 
     @mcp.tool(
         name="batch_call",
-        annotations={"title": "Batch Call Endpoint", "readOnlyHint": True}
+        annotations={"title": "Batch Call Endpoint", "readOnlyHint": True},
+        structured_output=False,
     )
     async def batch_call_tool(
         endpoint: str,
@@ -1543,7 +1663,7 @@ def register_gateway_tools(mcp, get_client_func: Callable) -> int:
             get_client_func, auto_ground, fields, max_concurrent,
             merge_strategy,
         )
-        return compact_json(result)
+        return render_text(result)
 
     logger.info("Registered 5 gateway tools: ground_entity, suggest_endpoints, "
                 "call_endpoint, get_navigation_schema, batch_call")

@@ -221,7 +221,8 @@ class EnrichResultsInput(BaseModel):
 
 @mcp.tool(
     name="get_graph_schema",
-    annotations={"title": "Get Graph Schema", "readOnlyHint": True, "idempotentHint": True}
+    annotations={"title": "Get Graph Schema", "readOnlyHint": True, "idempotentHint": True},
+    structured_output=False,
 )
 async def get_graph_schema_tool(params: GetGraphSchemaInput) -> str:
     """Progressively discover Neo4j graph schema (entity types, relationships).
@@ -282,7 +283,8 @@ async def get_graph_schema_tool(params: GetGraphSchemaInput) -> str:
 
 @mcp.tool(
     name="execute_cypher",
-    annotations={"title": "Execute Cypher Query", "readOnlyHint": True, "idempotentHint": True}
+    annotations={"title": "Execute Cypher Query", "readOnlyHint": True, "idempotentHint": True},
+    structured_output=False,
 )
 async def execute_cypher_tool(params: ExecuteCypherInput) -> str:
     """Execute arbitrary Cypher query on CoGEx knowledge graph.
@@ -333,7 +335,8 @@ async def execute_cypher_tool(params: ExecuteCypherInput) -> str:
 
 @mcp.tool(
     name="validate_cypher",
-    annotations={"title": "Validate Cypher Query", "readOnlyHint": True, "idempotentHint": True}
+    annotations={"title": "Validate Cypher Query", "readOnlyHint": True, "idempotentHint": True},
+    structured_output=False,
 )
 async def validate_cypher_tool(params: ValidateCypherInput) -> str:
     """Validate Cypher query safety before execution.
@@ -361,7 +364,8 @@ async def validate_cypher_tool(params: ValidateCypherInput) -> str:
 
 @mcp.tool(
     name="enrich_results",
-    annotations={"title": "Enrich Query Results", "readOnlyHint": True, "idempotentHint": True}
+    annotations={"title": "Enrich Query Results", "readOnlyHint": True, "idempotentHint": True},
+    structured_output=False,
 )
 async def enrich_results_tool(params: EnrichResultsInput) -> str:
     """Add progressive metadata to query results.
