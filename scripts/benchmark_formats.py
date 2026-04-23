@@ -1,4 +1,4 @@
-"""Cycle 5: Full benchmark through the wired pipeline.
+"""Full pipeline format benchmark.
 
 Simulates the call_endpoint post-cache path:
   sort → fields projection → paginate → format switch → envelope → compact_json
@@ -239,7 +239,7 @@ def run():
 
     # --- Print table ---
     print("=" * 130)
-    print("FULL PIPELINE BENCHMARK — Cycle 5")
+    print("FULL PIPELINE FORMAT BENCHMARK")
     print("Wire = compact_json(envelope) → tiktoken cl100k_base")
     print("Page size capped at 50 items (pagination default)")
     print("=" * 130)
@@ -297,7 +297,7 @@ def run():
         "",
         "## Decision",
         "",
-        "See Cycle 6 for default selection based on these results.",
+        "Default format selection is based on these results.",
     ]
 
     out_path = Path("benchmarks") / f"formats-{today}.md"

@@ -7,7 +7,7 @@
 - Tokenizer: `cl100k_base` (tiktoken) — proxy for GPT-4/Claude tokenizers
 - 4 shapes × 4 sizes (10, 50, 200, 500 rows) × 4 format variants
 
-## Kill Gate
+## Pass Threshold
 > TOON+fields must beat JSON+fields by >15% at 50/500 row sizes.
 
 ## Results
@@ -33,7 +33,7 @@
 
 ## Key Findings
 
-1. **Kill gate PASSED.** TOON+fields beats JSON+fields by **22–45%** across all shapes and sizes. Even at 10 rows the worst case (disease) clears the 15% gate at 22.7%.
+1. **Passed.** TOON+fields beats JSON+fields by **22–45%** across all shapes and sizes. Even at 10 rows the worst case (disease) clears the 15% threshold at 22.7%.
 
 2. **TOON vs full JSON** saves 20–37% — meaningful but the bigger lever is `fields`.
 
@@ -50,4 +50,4 @@
 8. **Statement shape** (wider: 11 keys) benefits most — 45% TOON+F/JSON+F at 500 rows.
 
 ## Decision
-Proceed to Cycle 2 (serializer implementation).
+Proceed with serializer implementation.

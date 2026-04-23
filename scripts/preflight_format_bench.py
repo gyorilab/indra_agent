@@ -1,11 +1,11 @@
-"""Cycle 1.5 pre-flight benchmark: JSON vs TOON vs fields-aggressive JSON.
+"""Pre-flight format benchmark: JSON vs TOON vs fields-aggressive JSON.
 
 Generates realistic synthetic payloads matching actual call_endpoint response
 shapes, wraps in full envelope (pagination, nav hints), serializes via
 compact_json (actual MCP wire), and counts tokens with tiktoken cl100k_base.
 
-Kill gate: if TOON beats fields-aggressive JSON by <15% at 50/500 rows,
-the format feature doesn't justify its complexity.
+Pass threshold: TOON must beat fields-aggressive JSON by >=15% at 50/500 rows
+to justify the added serializer complexity.
 """
 
 import json
@@ -177,7 +177,7 @@ def make_envelope(results_payload, total: int, format_name: str,
             "returned": min(50, total),
             "has_more": total > 50,
             "next_offset": 50,
-            "token_estimate": 0,  # placeholder
+            "token_estimate": 0,  # not measured in synthetic payloads
         }
     else:
         env["total"] = total
@@ -267,8 +267,8 @@ def run_benchmark():
 
     # Print results
     print("=" * 120)
-    print("PRE-FLIGHT FORMAT BENCHMARK — Cycle 1.5")
-    print("Kill gate: TOON must beat fields-aggressive JSON by >15% at 50/500 rows")
+    print("PRE-FLIGHT FORMAT BENCHMARK")
+    print("Pass threshold: TOON must beat fields-aggressive JSON by >15% at 50/500 rows")
     print("Tokenizer: cl100k_base (GPT-4/Claude proxy)")
     print("=" * 120)
     print()
@@ -289,7 +289,7 @@ def run_benchmark():
     print("  TOON+F     = TOON format with fields-aggressive projection")
     print("  TOON/JSON  = % token savings of TOON vs full JSON (positive = TOON cheaper)")
     print("  TOON/JSON+F = % token savings of TOON (full) vs JSON+fields")
-    print("  TOON+F/JSON+F = % token savings of TOON+fields vs JSON+fields (THE KILL GATE)")
+    print("  TOON+F/JSON+F = % token savings of TOON+fields vs JSON+fields (pass threshold)")
     print()
 
     # Envelope overhead analysis
