@@ -1,31 +1,4 @@
-"""Comprehensive Integration Tests for MCP Gateway Tools (Layer 5).
-
-Tests the primary MCP interface tools that provide natural language grounding,
-graph navigation, and endpoint execution with semantic filtering.
-
-Gateway Tools Under Test:
-1. ground_entity - Natural language → CURIEs with semantic filtering
-2. suggest_endpoints - Graph navigation suggestions based on entity types
-3. call_endpoint - Execute autoclient functions with auto-grounding
-4. get_navigation_schema - Full knowledge graph edge map
-
-These are the primary user-facing tools in the MCP server, providing the
-"gateway" interface between natural language queries and the underlying
-autoclient functions (100+ biomedical query functions).
-
-Key Features Tested:
-- GILDA grounding with ambiguity detection
-- Semantic filtering by parameter type (disease vs gene vs drug)
-- Dual-check ambiguity: absolute threshold + relative clustering
-- Auto-grounding in call_endpoint
-- Registry cache corruption recovery
-- xref cross-reference fallback
-
-Test Pattern:
-- Real Neo4j client (no mocks) - following conftest.py pattern
-- Real biomedical entities (LRRK2/HGNC:6407, Parkinson's/MESH:D010300)
-- Integration tests with meaningful assertions
-- Edge cases (empty inputs, invalid CURIEs, ambiguous terms)
+"""Integration tests for gateway tools.
 
 Run with: pytest -m nonpublic tests/apps/mcp_server/test_gateway_tools.py -v
 """
@@ -87,7 +60,7 @@ def get_client():
 
 @pytest.mark.nonpublic
 class TestGroundEntity:
-    """Comprehensive tests for ground_entity tool."""
+    """Tests for ground_entity."""
 
     @pytest.mark.asyncio
     async def test_basic_gene_grounding(self, flask_app_with_client):
@@ -235,7 +208,7 @@ class TestGroundEntity:
 
 @pytest.mark.nonpublic
 class TestSuggestEndpoints:
-    """Comprehensive tests for suggest_endpoints tool."""
+    """Tests for suggest_endpoints."""
 
     def test_gene_entity_suggestions(self):
         """Test suggestions for a gene CURIE."""
@@ -356,7 +329,7 @@ class TestSuggestEndpoints:
 
 @pytest.mark.nonpublic
 class TestCallEndpoint:
-    """Comprehensive tests for call_endpoint tool."""
+    """Tests for call_endpoint."""
 
     @pytest.mark.asyncio
     async def test_direct_curie_call(self, flask_app_with_client):
@@ -514,7 +487,7 @@ class TestCallEndpoint:
         # This is hard to test deterministically, but we can verify the mechanism
         # The xref fallback happens when auto-grounding succeeds but returns 0 results
         # We'd need a specific entity that has xrefs but original namespace has no results
-        # For now, just verify the code path exists by checking with a real query
+        # Verify the code path exists by checking with a real query
         result = await call_endpoint(
             endpoint="get_genes_for_disease",
             kwargs='{"disease": "Parkinson\'s disease"}',
@@ -536,7 +509,7 @@ class TestCallEndpoint:
 
 @pytest.mark.nonpublic
 class TestGetNavigationSchema:
-    """Comprehensive tests for get_navigation_schema tool."""
+    """Tests for get_navigation_schema."""
 
     def test_returns_edge_map(self):
         """Test that schema returns proper edge map structure."""
@@ -803,7 +776,7 @@ class TestConstants:
 
 
 # ============================================================================
-# Part 8: Namespace Case Normalization (Defect 1 fix)
+# Part 8: Namespace Case Normalization
 # ============================================================================
 
 @pytest.mark.nonpublic
@@ -858,7 +831,7 @@ class TestNamespaceCaseNormalization:
 
 
 # ============================================================================
-# Part 9: List[Tuple[str, str]] Auto-Grounding (Defect 2 fix)
+# Part 9: List[Tuple[str, str]] Auto-Grounding
 # ============================================================================
 
 @pytest.mark.nonpublic
@@ -943,7 +916,7 @@ class TestListTupleAutoGrounding:
 
 
 # ============================================================================
-# Part 10: Batch Error Propagation (Defect 3 fix)
+# Part 10: Batch Error Propagation
 # ============================================================================
 
 @pytest.mark.nonpublic
@@ -1424,7 +1397,7 @@ class TestCapabilityIndex:
 
 @pytest.mark.nonpublic
 class TestGatewayToolsCoverage:
-    """Verify comprehensive test coverage of gateway tools."""
+    """Verify all gateway tools have test coverage."""
 
     def test_all_gateway_tools_covered(self):
         """Verify that all 5 gateway tools are tested."""

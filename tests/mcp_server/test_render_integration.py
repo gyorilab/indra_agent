@@ -354,12 +354,12 @@ class TestRekeyNativeBatchResults:
         assert result["OBSCURE"] == []
 
     def test_alias_collision_both_inputs_get_same_rows(self):
-        """REGRESSION TEST: two distinct inputs grounding to one CURIE.
+        """REGRESSION: two distinct inputs grounding to one CURIE.
 
-        This is the scenario from wave 5 Codex finding: synonyms like
-        "LRRK2" and "PARK8" both ground to hgnc:6407. Both inputs must
-        receive the same upstream rows — the previous one-to-one map
-        had only one entry, leaving the other input as an empty list.
+        Synonyms like "LRRK2" and "PARK8" both ground to hgnc:6407.
+        Both inputs must receive the same upstream rows — the previous
+        one-to-one map had only one entry, leaving the other input as
+        an empty list.
         """
         from indra_agent.mcp_server.autoclient_tools import _rekey_native_batch_results
 

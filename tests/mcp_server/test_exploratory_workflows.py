@@ -287,7 +287,7 @@ class TestLayerIntegration:
         assert len(result1["results"]) == len(result2["results"])
 
     def test_all_layers_integrated(self, neo4j_client):
-        """Test that all layers work together seamlessly."""
+        """Test that all layers work together end-to-end."""
         from indra_agent.mcp_server.query_execution import execute_cypher
         from indra_agent.mcp_server.validation import validate_cypher
         from indra_agent.mcp_server.enrichment import enrich_results, DisclosureLevel

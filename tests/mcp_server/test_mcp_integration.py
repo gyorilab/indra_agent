@@ -1,7 +1,7 @@
 """Integration Tests for MCP Server Workflow.
 
-This test suite focuses on end-to-end integration testing and workflow composition.
-For comprehensive individual tool testing, see specialized test files:
+End-to-end integration testing and workflow composition.
+Individual tool tests are in specialized files:
 - test_cypher_execution.py - Query execution (Layer 2)
 - test_validation.py - Query validation (Layer 3)
 - test_schema_discovery.py - Schema discovery (Layer 1)
@@ -31,8 +31,8 @@ from indra_agent.mcp_server.enrichment import enrich_results, DisclosureLevel
 # ============================================================================
 
 @pytest.mark.nonpublic
-class TestGetGraphSchemaComprehensive:
-    """Comprehensive tests for get_graph_schema tool."""
+class TestGetGraphSchema:
+    """Tests for get_graph_schema."""
 
     @pytest.mark.asyncio
     async def test_summary_level(self, flask_app_with_client, neo4j_client):
@@ -98,8 +98,8 @@ class TestGetGraphSchemaComprehensive:
 
 
 @pytest.mark.nonpublic
-class TestEnrichResultsComprehensive:
-    """Comprehensive tests for enrich_results tool."""
+class TestEnrichResults:
+    """Tests for enrich_results."""
 
     @pytest.mark.asyncio
     async def test_minimal_disclosure_level(self, flask_app_with_client, neo4j_client):
@@ -437,15 +437,15 @@ class TestToolCoverage:
     def test_integration_workflow_coverage(self):
         """Verify integration tests exercise key MCP tools.
 
-        Note: Comprehensive individual tool tests are in specialized files:
+        Individual tool tests are in specialized files:
         - test_cypher_execution.py (execute_cypher)
         - test_validation.py (validate_cypher)
         - test_schema_discovery.py (get_graph_schema)
         - test_enrichment_tools_integration.py (enrich_results)
         """
         integration_tests = {
-            "get_graph_schema": True,       # TestGetGraphSchemaComprehensive
-            "enrich_results": True,          # TestEnrichResultsComprehensive
+            "get_graph_schema": True,       # TestGetGraphSchema
+            "enrich_results": True,          # TestEnrichResults
             "complete_workflow": True,       # TestCompleteResearchWorkflow
             "performance_benchmarks": True,  # TestPerformanceBenchmarks
             "error_handling": True           # TestErrorHandlingIntegration

@@ -126,7 +126,7 @@ class TestSchemaDiscoveryBasics:
             assert "RETURN" in first_pattern["example_query"]
 
     def test_full_level_returns_complete_schema(self, neo4j_client):
-        """Full level should return comprehensive schema information."""
+        """Full level should return complete schema information."""
         result = get_graph_schema(neo4j_client, detail_level="full")
 
         # Should have all detail levels combined
