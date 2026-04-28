@@ -14,31 +14,37 @@ Graph navigation approach:
 import asyncio
 import json
 import logging
-from typing import Any, Callable, Dict, List, Optional, Set, Tuple
+from inspect import signature
+from typing import Any, Callable, Dict, List, Optional, Set, Tuple, get_args, get_origin
 
-from indra_agent.mcp_server.cache import cache as _cache, make_key, DEFAULT_TTL
+from indra_agent.mcp_server.cache import DEFAULT_TTL, cache as _cache, make_key
+from indra_agent.mcp_server.enrichment import build_type_metadata
+from indra_agent.mcp_server.formats import render_text, stable_key_union
+from indra_agent.mcp_server.mappings import (
+    AMBIGUITY_SCORE_THRESHOLD,
+    CURIE_PREFIX_TO_ENTITY,
+    MIN_CONFIDENCE_THRESHOLD,
+    ORGANISM_TO_TAXONOMY_ID,
+    PARAM_NAMESPACE_FILTERS,
+)
+from indra_agent.mcp_server.pagination import (
+    estimate_tokens,
+    paginate_response,
+)
+from indra_agent.mcp_server.registry import (
+    _get_capability_index,
+    _get_registry,
+    clear_registry_cache,
+)
+from indra_agent.mcp_server.serialization import process_result, resolve_entity_names
+
+logger = logging.getLogger(__name__)
 
 
 def compact_json(obj: Any) -> str:
     """Serialize to compact JSON for token efficiency."""
     return json.dumps(obj, separators=(',', ':'), default=str)
 
-
-from indra_agent.mcp_server.mappings import (
-    CURIE_PREFIX_TO_ENTITY,
-    PARAM_NAMESPACE_FILTERS,
-    MIN_CONFIDENCE_THRESHOLD,
-    AMBIGUITY_SCORE_THRESHOLD,
-    ORGANISM_TO_TAXONOMY_ID,
-)
-from indra_agent.mcp_server.registry import _get_registry, _get_capability_index, clear_registry_cache
-from indra_agent.mcp_server.serialization import process_result, resolve_entity_names
-from indra_agent.mcp_server.formats import stable_key_union, render_text
-from indra_agent.mcp_server.pagination import (
-    paginate_response, estimate_tokens,
-)
-
-logger = logging.getLogger(__name__)
 
 # Request coalescing: prevent duplicate Neo4j queries for identical concurrent requests.
 # Maps cache key → asyncio.Future so concurrent callers await a single execution.
@@ -132,8 +138,6 @@ def _lookup_xrefs(
     :
         List of (namespace, id) tuples including the original plus any xrefs found
     """
-    from indra_cogex.representation import norm_id
-
     # Start with the original identifier
     equivalents = [(namespace.lower(), identifier)]
 
@@ -143,6 +147,8 @@ def _lookup_xrefs(
         allowed_namespaces = PARAM_NAMESPACE_FILTERS.get(param_name.lower())
 
     try:
+        from indra_cogex.representation import norm_id
+
         # Query for xref relationships (bidirectional)
         source_id = norm_id(namespace, identifier)
         query = """
@@ -377,9 +383,6 @@ async def call_endpoint(
     grounding_info = {}
 
     # Process parameters - normalize CURIEs and auto-ground strings
-    from inspect import signature
-    from typing import get_args, get_origin
-
     try:
         func_sig = signature(func)
         for param_name, param_value in list(parsed_kwargs.items()):
@@ -700,7 +703,6 @@ async def call_endpoint(
         type_metadata = None
         if disclosure_level and disclosure_level != "minimal":
             try:
-                from indra_agent.mcp_server.enrichment import build_type_metadata
                 if isinstance(processed, list) and processed:
                     type_metadata = build_type_metadata(processed, disclosure_level)
                     enrichment_info = {"disclosure_level": disclosure_level}

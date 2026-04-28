@@ -1,6 +1,7 @@
 """Function registry and edge map cache for MCP gateway."""
 
 import logging
+import random
 import re
 import threading
 from collections import defaultdict
@@ -62,7 +63,6 @@ def _validate_cached_registry() -> bool:
             return False
 
         # Sample validation: check that a few random functions from func_mapping are callable
-        import random
         if _FUNC_MAPPING:
             sample_size = min(5, len(_FUNC_MAPPING))
             sample_funcs = random.sample(list(_FUNC_MAPPING.items()), sample_size)
@@ -166,7 +166,6 @@ def get_registry_status() -> Dict[str, Any]:
         validation_error = None
         try:
             if _FUNC_MAPPING:
-                import random
                 sample = random.choice(list(_FUNC_MAPPING.items()))
                 func_name, func = sample
                 if not callable(func):
