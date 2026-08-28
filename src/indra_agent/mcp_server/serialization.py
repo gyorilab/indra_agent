@@ -48,9 +48,14 @@ def resolve_entity_names(
 
         logger.debug(f"Resolved {len(id_to_name)}/{len(ids_to_resolve)} entity names")
 
-        # Merge names into results
+        # Merge names into results — only fill missing names, never overwrite
+        # existing ones (preserves source-specific labels and prevents
+        # cross-bucket clobbering when this function runs over a multi-source
+        # batch where one bucket has labeled rows and another has unlabeled).
         for item in results:
             if isinstance(item, dict) and "db_ns" in item and "db_id" in item:
+                if item.get("name") is not None:
+                    continue
                 entity_id = f"{item['db_ns'].lower()}:{item['db_id']}"
                 if entity_id in id_to_name:
                     item["name"] = id_to_name[entity_id]

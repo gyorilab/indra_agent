@@ -4,7 +4,7 @@ This module implements the core query execution layer for the MCP server, provid
 - Parameterized Cypher query execution with timeout enforcement
 - Result limiting and truncation
 - Query execution plan analysis (EXPLAIN)
-- Comprehensive error handling and recovery
+- Error handling and recovery
 - Neo4j type serialization to JSON
 
 Integration points:
